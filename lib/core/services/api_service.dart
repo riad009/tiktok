@@ -5,6 +5,7 @@ import '../../models/user_model.dart';
 import '../../models/video_model.dart';
 import '../../models/message_model.dart';
 import '../../models/comment_model.dart';
+import '../../models/report_model.dart';
 
 /// HTTP client that talks to the Express API.
 class ApiService {
@@ -16,11 +17,12 @@ class ApiService {
   /// Public accessor for the API base URL (used by music search proxy etc.)
   static String get baseUrl => _baseUrl;
 
-  /// JWT token for authenticated requests.
   static String? _token;
-
-  /// Sets the JWT token (called after login/signup/restore).
-  static void setToken(String? token) => _token = token;
+  static void setToken(String? t) => _token = t;
+  static Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
 
   // ── Auth ─────────────────────────────────────────────────────
   static Future<UserModel?> signup({
@@ -41,7 +43,7 @@ class ApiService {
     );
     if (res.statusCode == 201) {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
-      _token = j['token'] as String?;  // store JWT
+      _token = j['token'] as String?;
       return _parseUser(j);
     }
     throw Exception(jsonDecode(res.body)['error'] ?? 'Signup failed');
@@ -58,7 +60,7 @@ class ApiService {
     );
     if (res.statusCode == 200) {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
-      _token = j['token'] as String?;  // store JWT
+      _token = j['token'] as String?;
       return _parseUser(j);
     }
     throw Exception(jsonDecode(res.body)['error'] ?? 'Login failed');
@@ -195,35 +197,6 @@ class ApiService {
     return null;
   }
 
-  static Future<List<ConversationModel>> getGroupConversations(String userId) async {
-    final res = await http.get(Uri.parse('$_baseUrl/conversations/$userId?group=true'));
-    if (res.statusCode == 200) {
-      final List list = jsonDecode(res.body);
-      return list.map((j) => _parseGroupConversation(j)).toList();
-    }
-    return [];
-  }
-
-  static Future<ConversationModel?> createGroupConversation({
-    required String creatorId,
-    required String groupName,
-    required List<String> memberIds,
-  }) async {
-    final res = await http.post(
-      Uri.parse('$_baseUrl/conversations/group'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'creatorId': creatorId,
-        'groupName': groupName,
-        'memberIds': memberIds,
-      }),
-    );
-    if (res.statusCode == 201) {
-      return _parseGroupConversation(jsonDecode(res.body));
-    }
-    return null;
-  }
-
   // ── Messages ─────────────────────────────────────────────────
   static Future<List<MessageModel>> getMessages(String conversationId) async {
     final res = await http.get(Uri.parse('$_baseUrl/messages/$conversationId'));
@@ -255,16 +228,14 @@ class ApiService {
   }
 
   // ── Livestreams (Mux) ────────────────────────────────────────
-  /// Creates a live stream. Uses /mock endpoint for demo (no Mux keys needed).
-  /// For production, change '/livestreams/mock' → '/livestreams'.
   static Future<Map<String, dynamic>?> createStream({
     required String userId,
     required String title,
   }) async {
     try {
       final res = await http.post(
-        Uri.parse('$_baseUrl/livestreams/mock'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('$_baseUrl/livestreams'),
+        headers: _headers,
         body: jsonEncode({'userId': userId, 'title': title}),
       );
       if (res.statusCode == 200 || res.statusCode == 201) {
@@ -274,7 +245,6 @@ class ApiService {
     return null;
   }
 
-  /// Gets all active live streams from the DB.
   static Future<List<Map<String, dynamic>>> getLivestreams() async {
     try {
       final res = await http.get(Uri.parse('$_baseUrl/livestreams'));
@@ -285,7 +255,6 @@ class ApiService {
     return [];
   }
 
-  /// Gets replay (VOD) assets for a user.
   static Future<List<Map<String, dynamic>>> getUserReplays(String userId) async {
     try {
       final res = await http.get(Uri.parse('$_baseUrl/livestreams/replays/$userId'));
@@ -294,6 +263,70 @@ class ApiService {
       }
     } catch (_) {}
     return [];
+  }
+
+  // ── Admin ────────────────────────────────────────────────────
+  static Future<Map<String, int>> getAdminStats() async {
+    try {
+      final res = await http.get(Uri.parse('$_baseUrl/admin/stats'));
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body) as Map<String, dynamic>;
+        return {
+          'totalUsers': j['totalUsers'] ?? 0,
+          'totalVideos': j['totalVideos'] ?? 0,
+          'totalLivestreams': j['totalLivestreams'] ?? 0,
+          'pendingReports': j['pendingReports'] ?? 0,
+        };
+      }
+    } catch (_) {}
+    return {'totalUsers': 0, 'totalVideos': 0, 'totalLivestreams': 0, 'pendingReports': 0};
+  }
+
+  static Future<void> adminBanUser(String uid, bool banned) async {
+    await http.put(
+      Uri.parse('$_baseUrl/admin/users/$uid/ban'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'banned': banned}),
+    );
+  }
+
+  static Future<void> adminVerifyUser(String uid, bool verified) async {
+    await http.put(
+      Uri.parse('$_baseUrl/admin/users/$uid/verify'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'verified': verified}),
+    );
+  }
+
+  static Future<void> adminUpdateRole(String uid, String role) async {
+    await http.put(
+      Uri.parse('$_baseUrl/admin/users/$uid/role'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'role': role}),
+    );
+  }
+
+  static Future<void> adminDeletePost(String postId) async {
+    await http.delete(Uri.parse('$_baseUrl/admin/posts/$postId'));
+  }
+
+  static Future<List<ReportModel>> getAdminReports() async {
+    try {
+      final res = await http.get(Uri.parse('$_baseUrl/admin/reports'));
+      if (res.statusCode == 200) {
+        final List list = jsonDecode(res.body);
+        return list.map((j) => ReportModel.fromMap(j as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  static Future<void> adminResolveReport(String reportId, String adminId, String action) async {
+    await http.put(
+      Uri.parse('$_baseUrl/admin/reports/$reportId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'status': action, 'resolvedBy': adminId}),
+    );
   }
 
   // ── Parsers ──────────────────────────────────────────────────
@@ -308,6 +341,7 @@ class ApiService {
       bio: j['bio'] ?? '',
       role: j['role'] ?? 'user',
       isVerified: j['isVerified'] ?? false,
+      isBanned: j['isBanned'] ?? false,
       followersCount: j['followersCount'] ?? 0,
       followingCount: j['followingCount'] ?? 0,
       postsCount: j['postsCount'] ?? 0,

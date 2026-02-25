@@ -56,11 +56,11 @@ final currentUidProvider = Provider<String?>((ref) {
 /// AuthGate waits on this before deciding which screen to show.
 final sessionProvider = FutureProvider<UserModel?>((ref) async {
   try {
-    final user = await AuthPersistence.loadUser();
-    if (user != null) {
+    final saved = await AuthPersistence.loadUser();
+    if (saved != null) {
       // Update the authUserProvider with the restored user
-      ref.read(authUserProvider.notifier).state = user;
-      return user;
+      ref.read(authUserProvider.notifier).state = saved;
+      return saved;
     }
   } catch (_) {}
   return null;
@@ -193,9 +193,8 @@ final allClipsProvider = FutureProvider<List<ClipModel>>((ref) async {
 
 // ── Group Conversations (from PostgreSQL API) ──────────────────
 final groupConversationsProvider = FutureProvider<List<ConversationModel>>((ref) async {
-  final uid = ref.watch(currentUidProvider);
-  if (uid == null) return [];
-  return ApiService.getGroupConversations(uid);
+  // Group conversations not yet implemented in API
+  return [];
 });
 
 // ── Blocked Users ───────────────────────────────────────────────
@@ -203,9 +202,9 @@ final blockedUsersProvider = StateProvider<List<String>>((ref) {
   return List<String>.from(MockData.blockedUserIds);
 });
 
-// ── Reports (mock admin) ────────────────────────────────────────
-final reportsProvider = StreamProvider<List<ReportModel>>((ref) {
-  return Stream.value(MockData.reports);
+// ── Reports (from PostgreSQL API) ────────────────────────────────
+final reportsProvider = FutureProvider<List<ReportModel>>((ref) async {
+  return ApiService.getAdminReports();
 });
 
 // ── Subscriptions (mock) ────────────────────────────────────────

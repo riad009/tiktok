@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class ReportModel {
   final String id;
   final String reporterId;
@@ -27,9 +25,9 @@ class ReportModel {
     this.resolvedBy,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  factory ReportModel.fromMap(Map<String, dynamic> map, String docId) {
+  factory ReportModel.fromMap(Map<String, dynamic> map, [String? docId]) {
     return ReportModel(
-      id: docId,
+      id: docId ?? map['id'] ?? '',
       reporterId: map['reporterId'] ?? '',
       reporterUsername: map['reporterUsername'] ?? '',
       targetId: map['targetId'] ?? '',
@@ -37,14 +35,19 @@ class ReportModel {
       reason: map['reason'] ?? '',
       details: map['details'] ?? '',
       status: map['status'] ?? 'pending',
-      createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      resolvedAt: (map['resolvedAt'] as Timestamp?)?.toDate(),
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      resolvedAt: map['resolvedAt'] != null
+          ? DateTime.tryParse(map['resolvedAt'].toString())
+          : null,
       resolvedBy: map['resolvedBy'],
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'reporterId': reporterId,
       'reporterUsername': reporterUsername,
       'targetId': targetId,
@@ -52,8 +55,8 @@ class ReportModel {
       'reason': reason,
       'details': details,
       'status': status,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'resolvedAt': resolvedAt != null ? Timestamp.fromDate(resolvedAt!) : null,
+      'createdAt': createdAt.toIso8601String(),
+      'resolvedAt': resolvedAt?.toIso8601String(),
       'resolvedBy': resolvedBy,
     };
   }

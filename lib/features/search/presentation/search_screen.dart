@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/data/mock_data.dart';
-import '../../../models/music_model.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../music/presentation/music_player_screen.dart';
 
@@ -291,7 +290,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   }
 
   Widget _buildMusicTab() {
-    final tracks = MockData.trendingTracks;
+    final tracks = MockData.musicTracks;
     final filtered = _isSearching
         ? tracks.where((t) =>
             t.title.toLowerCase().contains(_query.toLowerCase()) ||

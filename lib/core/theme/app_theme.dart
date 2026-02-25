@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  // Primary gradient colors
-  static const Color primary = Color(0xFFFF006E);
-  static const Color primaryLight = Color(0xFFFF4D94);
-  static const Color secondary = Color(0xFF8338EC);
+  // Primary purple palette
+  static const Color primary = Color(0xFF8B5CF6);
+  static const Color primaryLight = Color(0xFFA78BFA);
+  static const Color primaryDark = Color(0xFF6D28D9);
+  static const Color purpleGlow = Color(0xFFA855F7);
+  static const Color secondary = Color(0xFFEC4899);
   static const Color accent = Color(0xFF3A86FF);
 
-  // Dark theme
-  static const Color darkBg = Color(0xFF0A0A0F);
-  static const Color darkSurface = Color(0xFF14141F);
-  static const Color darkCard = Color(0xFF1E1E2E);
-  static const Color darkBorder = Color(0xFF2A2A3E);
+  // Dark theme  
+  static const Color darkBg = Color(0xFF0D0D0D);
+  static const Color darkSurface = Color(0xFF121218);
+  static const Color darkCard = Color(0xFF1A1A2E);
+  static const Color darkBorder = Color(0xFF252540);
+  static const Color navBarBg = Color(0xFF111111);
 
   // Text
   static const Color textPrimary = Color(0xFFFFFFFF);
@@ -34,13 +37,25 @@ class AppColors {
 
   // Gradient
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [primary, secondary],
+    colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient purpleGradient = LinearGradient(
+    colors: [Color(0xFF7C3AED), Color(0xFFA855F7)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  static const LinearGradient navLogoGradient = LinearGradient(
+    colors: [Color(0xFF9333EA), Color(0xFFC084FC)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient storyGradient = LinearGradient(
-    colors: [Color(0xFFFF006E), Color(0xFFFF6B35), Color(0xFFFFBE0B)],
+    colors: [Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFFFFBE0B)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -76,12 +91,14 @@ class AppTheme {
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: AppColors.darkBg,
+        backgroundColor: AppColors.navBarBg,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
         showUnselectedLabels: true,
         elevation: 0,
+        selectedLabelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
       ),
       cardTheme: CardThemeData(
         color: AppColors.darkCard,

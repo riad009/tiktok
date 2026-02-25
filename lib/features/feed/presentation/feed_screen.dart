@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
@@ -10,6 +10,8 @@ import '../../../core/widgets/artistcase_logo.dart';
 import '../../../models/video_model.dart';
 import '../../../models/comment_model.dart';
 import '../../stories/presentation/create_story_screen.dart';
+import '../../livestream/presentation/livestream_screen.dart';
+import '../../search/presentation/search_screen.dart';
 
 /// Custom scroll behavior that enables mouse drag on web
 class _WebScrollBehavior extends MaterialScrollBehavior {
@@ -22,6 +24,7 @@ class _WebScrollBehavior extends MaterialScrollBehavior {
   };
 }
 
+
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -33,6 +36,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   bool _isAnimating = false;
+  double _dragStart = 0;
 
   @override
   void dispose() {
@@ -40,30 +44,26 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     super.dispose();
   }
 
+  void _animateToPage(int page) {
+    _isAnimating = true;
+    _currentPage = page;
+    _pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+    ).then((_) => _isAnimating = false);
+  }
+
   /// Snap to next/previous page on any mouse wheel tick
   void _onPointerScroll(PointerScrollEvent event, int totalPages) {
     if (_isAnimating) return;
-
     if (event.scrollDelta.dy > 0 && _currentPage < totalPages - 1) {
-      // Scroll down → next page
-      _isAnimating = true;
-      _currentPage++;
-      _pageController.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic,
-      ).then((_) => _isAnimating = false);
+      _animateToPage(_currentPage + 1);
     } else if (event.scrollDelta.dy < 0 && _currentPage > 0) {
-      // Scroll up → previous page
-      _isAnimating = true;
-      _currentPage--;
-      _pageController.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic,
-      ).then((_) => _isAnimating = false);
+      _animateToPage(_currentPage - 1);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -86,27 +86,69 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ),
           ),
         ),
+        leading: GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LivestreamScreen()),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.liveRed,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, size: 8, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text('LIVE', style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    )),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
         title: Row(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            TextButton(
-              onPressed: () {},
-              style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-              child: const Text('Following',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 4),
-            ShaderMask(
-              shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
-              child: const Text('For You',
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white)),
-            ),
+            _FeedTab(label: 'For You', isActive: true, onTap: () {}),
+            const SizedBox(width: 20),
+            _FeedTab(label: 'Following', isActive: false, onTap: () {}),
           ],
         ),
         centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SearchScreen()),
+                );
+              },
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+          ),
+        ],
       ),
       body: feedAsync.when(
         data: (videos) {
@@ -131,17 +173,35 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 _onPointerScroll(event, videos.length);
               }
             },
-            child: ScrollConfiguration(
-              behavior: _WebScrollBehavior(),
+            child: GestureDetector(
+              onVerticalDragStart: (d) => _dragStart = d.globalPosition.dy,
+              onVerticalDragUpdate: (d) {
+                if (_isAnimating) return;
+                final delta = _dragStart - d.globalPosition.dy;
+                if (delta > 20 && _currentPage < videos.length - 1) {
+                  _animateToPage(_currentPage + 1);
+                } else if (delta < -20 && _currentPage > 0) {
+                  _animateToPage(_currentPage - 1);
+                }
+              },
+              onVerticalDragEnd: (d) {
+                if (_isAnimating) return;
+                final v = d.primaryVelocity ?? 0;
+                if (v < -100 && _currentPage < videos.length - 1) {
+                  _animateToPage(_currentPage + 1);
+                } else if (v > 100 && _currentPage > 0) {
+                  _animateToPage(_currentPage - 1);
+                }
+              },
               child: PageView.builder(
                 controller: _pageController,
                 scrollDirection: Axis.vertical,
                 allowImplicitScrolling: true,
-                physics: const ClampingScrollPhysics(),
+                physics: const NeverScrollableScrollPhysics(),
                 onPageChanged: (page) => _currentPage = page,
                 itemCount: videos.length,
                 itemBuilder: (context, index) =>
-                    _PostCard(video: videos[index], isActive: true),
+                    _PostCard(video: videos[index], isActive: _currentPage == index),
               ),
             ),
           );
@@ -172,6 +232,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     );
   }
 }
+
+
 
 // ── Post card ─────────────────────────────────────────────────────
 class _PostCard extends ConsumerStatefulWidget {
@@ -388,15 +450,42 @@ class _PostCardState extends ConsumerState<_PostCard>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Username
+                // Username + Follow
                 Row(
                   children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.3),
+                      backgroundImage: video.userPhotoUrl.isNotEmpty
+                          ? NetworkImage(video.userPhotoUrl)
+                          : null,
+                      child: video.userPhotoUrl.isEmpty
+                          ? Text(video.username.isNotEmpty ? video.username[0].toUpperCase() : '?',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
                     Text(
-                      '@${video.username}',
+                      video.username,
                       style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 15,
                           shadows: [Shadow(blurRadius: 6, color: Colors.black)]),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text('Follow',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -730,37 +819,61 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
               decoration: const BoxDecoration(
                   border: Border(
                       top: BorderSide(color: Color(0xFF2a2a2a)))),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                          color: const Color(0xFF2a2a2a),
-                          borderRadius: BorderRadius.circular(24)),
-                      child: TextField(
-                        controller: _commentController,
-                        onSubmitted: (_) => _post(),
-                        style: const TextStyle(fontSize: 14),
-                        decoration: const InputDecoration(
-                            hintText: 'Add a comment...',
-                            hintStyle: TextStyle(color: AppColors.textMuted),
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                              color: const Color(0xFF2a2a2a),
+                              borderRadius: BorderRadius.circular(24)),
+                          child: TextField(
+                            controller: _commentController,
+                            onSubmitted: (_) => _post(),
+                            style: const TextStyle(fontSize: 14),
+                            decoration: const InputDecoration(
+                                hintText: 'Add a comment...',
+                                hintStyle: TextStyle(color: AppColors.textMuted),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12)),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: _post,
+                        child: Container(
+                          width: 40, height: 40,
+                          decoration: const BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              shape: BoxShape.circle),
+                          child: const Icon(Icons.send_rounded,
+                              color: Colors.white, size: 18),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: _post,
-                    child: Container(
-                      width: 40, height: 40,
-                      decoration: const BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          shape: BoxShape.circle),
-                      child: const Icon(Icons.send_rounded,
-                          color: Colors.white, size: 18),
-                    ),
+                  // Music ticker
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.music_note_rounded, size: 14, color: Colors.white70),
+                      const SizedBox(width: 6),
+                      const Flexible(
+                        child: Text(
+                          '♪ Original Sound',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -768,6 +881,48 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
           ],
         );
       },
+    );
+  }
+}
+
+// ── Feed Tab (For You / Following) ────────────────────────────────
+class _FeedTab extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _FeedTab({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isActive ? 17 : 16,
+              fontWeight: isActive ? FontWeight.w900 : FontWeight.w600,
+              color: isActive ? Colors.white : Colors.white60,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 28,
+            height: 3,
+            decoration: BoxDecoration(
+              color: isActive ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

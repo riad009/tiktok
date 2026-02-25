@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/widgets/stat_card.dart';
+import '../../../core/services/api_service.dart';
 import '../../../models/user_model.dart';
+import '../../../models/video_model.dart';
 import '../../../models/report_model.dart';
 
 class AdminPanelScreen extends ConsumerStatefulWidget {
@@ -17,14 +19,20 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<UserModel> _users = [];
+  List<VideoModel> _posts = [];
+  List<ReportModel> _reports = [];
   bool _loadingUsers = true;
+  bool _loadingPosts = true;
+  bool _loadingReports = true;
   final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadUsers();
+    _loadPosts();
+    _loadReports();
   }
 
   @override
@@ -37,6 +45,24 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
   Future<void> _loadUsers() async {
     final users = await ref.read(adminRepositoryProvider).getAllUsers();
     if (mounted) setState(() { _users = users; _loadingUsers = false; });
+  }
+
+  Future<void> _loadPosts() async {
+    try {
+      final posts = await ApiService.getFeed();
+      if (mounted) setState(() { _posts = posts; _loadingPosts = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingPosts = false);
+    }
+  }
+
+  Future<void> _loadReports() async {
+    try {
+      final reports = await ApiService.getAdminReports();
+      if (mounted) setState(() { _reports = reports; _loadingReports = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingReports = false);
+    }
   }
 
   Future<void> _searchUsers(String query) async {
@@ -105,6 +131,7 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
               tabs: const [
                 Tab(text: 'Dashboard'),
                 Tab(text: 'Users'),
+                Tab(text: 'Content'),
                 Tab(text: 'Reports'),
               ],
             ),
@@ -115,6 +142,7 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
               children: [
                 _buildDashboard(),
                 _buildUsersTab(),
+                _buildContentTab(),
                 _buildReportsTab(),
               ],
             ),
@@ -127,7 +155,7 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
   // ── Dashboard Tab ──────────────────────────────────────────────
   Widget _buildDashboard() {
     return FutureBuilder<Map<String, int>>(
-      future: ref.read(adminRepositoryProvider).getPlatformStats(),
+      future: ApiService.getAdminStats(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -253,52 +281,217 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
     _loadUsers();
   }
 
-  // ── Reports Tab ────────────────────────────────────────────────
-  Widget _buildReportsTab() {
-    final reports = ref.watch(reportsProvider);
-    return reports.when(
-      data: (reportsList) {
-        if (reportsList.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check_circle, size: 64, color: AppColors.success.withValues(alpha: 0.5)),
-                const SizedBox(height: 16),
-                Text(
-                  'No reports',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'All clear! No pending reports.',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 14),
-                ),
-              ],
-            ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: reportsList.length,
-          itemBuilder: (context, i) => _ReportCard(
-            report: reportsList[i],
-            onResolve: () => _resolveReport(reportsList[i].id, 'resolved'),
-            onDismiss: () => _resolveReport(reportsList[i].id, 'dismissed'),
-          ),
-        );
-      },
-      loading: () => const Center(
+  // ── Content Moderation Tab ────────────────────────────────────
+  Widget _buildContentTab() {
+    if (_loadingPosts) {
+      return const Center(
         child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+    if (_posts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.video_library_outlined, size: 64,
+                color: AppColors.textMuted.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text(
+              'No content',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No posts to moderate.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _posts.length,
+      itemBuilder: (context, i) => _PostModCard(
+        post: _posts[i],
+        onDelete: () => _deletePost(_posts[i]),
       ),
-      error: (_, __) => const Center(child: Text('Error loading reports')),
     );
   }
 
-  void _resolveReport(String reportId, String action) {
-    final user = ref.read(currentUserProvider).value;
+  void _deletePost(VideoModel post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Post?', style: TextStyle(color: AppColors.textPrimary)),
+        content: Text(
+          'This will permanently remove the post by @${post.username}.\nCaption: "${post.caption}"',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(adminRepositoryProvider).deleteContent(post.id);
+      _loadPosts();
+    }
+  }
+
+  // ── Reports Tab ────────────────────────────────────────────────
+  Widget _buildReportsTab() {
+    if (_loadingReports) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+    if (_reports.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.check_circle, size: 64, color: AppColors.success.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text(
+              'No reports',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'All clear! No pending reports.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _reports.length,
+      itemBuilder: (context, i) => _ReportCard(
+        report: _reports[i],
+        onResolve: () => _resolveReport(_reports[i].id, 'resolved'),
+        onDismiss: () => _resolveReport(_reports[i].id, 'dismissed'),
+      ),
+    );
+  }
+
+  void _resolveReport(String reportId, String action) async {
+    final user = ref.read(authUserProvider);
     if (user == null) return;
-    ref.read(adminRepositoryProvider).resolveReport(reportId, user.uid, action);
+    await ref.read(adminRepositoryProvider).resolveReport(reportId, user.uid, action);
+    _loadReports();
+  }
+}
+
+// ── Post Moderation Card ─────────────────────────────────────────
+class _PostModCard extends StatelessWidget {
+  final VideoModel post;
+  final VoidCallback onDelete;
+
+  const _PostModCard({required this.post, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final isVideo = post.videoUrl.isNotEmpty;
+    final isImage = post.imageUrl.isNotEmpty;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.darkCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.darkBorder),
+      ),
+      child: Row(
+        children: [
+          // Thumbnail
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              color: AppColors.darkSurface,
+              borderRadius: BorderRadius.circular(10),
+              image: (post.thumbnailUrl.isNotEmpty || isImage)
+                  ? DecorationImage(
+                      image: NetworkImage(
+                          post.thumbnailUrl.isNotEmpty ? post.thumbnailUrl : post.imageUrl),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: (post.thumbnailUrl.isEmpty && !isImage)
+                ? Icon(
+                    isVideo ? Icons.videocam : Icons.image,
+                    color: AppColors.textMuted,
+                    size: 24,
+                  )
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '@${post.username}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  post.caption.isNotEmpty ? post.caption : '(no caption)',
+                  style: TextStyle(
+                    color: post.caption.isNotEmpty
+                        ? AppColors.textPrimary
+                        : AppColors.textMuted,
+                    fontSize: 13,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.favorite, size: 14, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text('${post.likesCount}',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    const SizedBox(width: 12),
+                    Icon(Icons.comment, size: 14, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text('${post.commentsCount}',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    const SizedBox(width: 12),
+                    Icon(Icons.visibility, size: 14, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text('${post.viewsCount}',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 22),
+            tooltip: 'Delete post',
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -362,12 +555,15 @@ class _UserAdminCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      user.displayName,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
+                    Flexible(
+                      child: Text(
+                        user.displayName,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 6),

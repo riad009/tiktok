@@ -552,7 +552,147 @@ app.post('/api/messages', async (req, res) => {
     }
 });
 
+// ─── ADMIN ───────────────────────────────────────────────────────
+
+// GET /api/admin/stats
+app.get('/api/admin/stats', async (req, res) => {
+    try {
+        const users = await pool.query('SELECT COUNT(*) FROM users');
+        const posts = await pool.query('SELECT COUNT(*) FROM posts');
+        const pendingReports = await pool.query("SELECT COUNT(*) FROM reports WHERE status = 'pending'");
+        let livestreams = { rows: [{ count: '0' }] };
+        try { livestreams = await pool.query('SELECT COUNT(*) FROM livestreams'); } catch (_) { }
+        res.json({
+            totalUsers: parseInt(users.rows[0].count),
+            totalVideos: parseInt(posts.rows[0].count),
+            totalLivestreams: parseInt(livestreams.rows[0].count),
+            pendingReports: parseInt(pendingReports.rows[0].count),
+        });
+    } catch (err) {
+        console.error('Admin stats error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/admin/users/:id/ban
+app.put('/api/admin/users/:id/ban', async (req, res) => {
+    try {
+        const { banned } = req.body;
+        await pool.query('UPDATE users SET is_banned = $1 WHERE id = $2', [banned, req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Ban user error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/admin/users/:id/verify
+app.put('/api/admin/users/:id/verify', async (req, res) => {
+    try {
+        const { verified } = req.body;
+        await pool.query('UPDATE users SET is_verified = $1 WHERE id = $2', [verified, req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Verify user error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/admin/users/:id/role
+app.put('/api/admin/users/:id/role', async (req, res) => {
+    try {
+        const { role } = req.body;
+        await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Update role error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/admin/posts/:id
+app.delete('/api/admin/posts/:id', async (req, res) => {
+    try {
+        const postId = req.params.id;
+        const post = await pool.query('SELECT user_id FROM posts WHERE id = $1', [postId]);
+        if (post.rows.length > 0) {
+            await pool.query('UPDATE users SET posts_count = GREATEST(posts_count - 1, 0) WHERE id = $1', [post.rows[0].user_id]);
+        }
+        await pool.query('DELETE FROM posts WHERE id = $1', [postId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Delete post error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/reports
+app.get('/api/admin/reports', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT r.*, u.username AS reporter_uname
+       FROM reports r LEFT JOIN users u ON r.reporter_id = u.id
+       ORDER BY r.created_at DESC`
+        );
+        res.json(result.rows.map(mapReport));
+    } catch (err) {
+        console.error('Get reports error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/admin/reports
+app.post('/api/admin/reports', async (req, res) => {
+    try {
+        const { reporterId, targetId, targetType, reason, details } = req.body;
+        if (!reporterId || !targetId || !reason) {
+            return res.status(400).json({ error: 'reporterId, targetId, and reason are required' });
+        }
+        const id = uuid();
+        await pool.query(
+            `INSERT INTO reports (id, reporter_id, target_id, target_type, reason, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+            [id, reporterId, targetId, targetType || 'user', reason, details || '']
+        );
+        res.status(201).json({ id, success: true });
+    } catch (err) {
+        console.error('Create report error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/admin/reports/:id
+app.put('/api/admin/reports/:id', async (req, res) => {
+    try {
+        const { status, resolvedBy } = req.body;
+        await pool.query(
+            `UPDATE reports SET status = $1, resolved_at = NOW(), resolved_by = $2 WHERE id = $3`,
+            [status, resolvedBy || '', req.params.id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Resolve report error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // ─── MAPPERS ─────────────────────────────────────────────────────
+
+function mapReport(row) {
+    return {
+        id: row.id,
+        reporterId: row.reporter_id,
+        reporterUsername: row.reporter_uname || row.reporter_username || '',
+        targetId: row.target_id,
+        targetType: row.target_type || 'user',
+        reason: row.reason || '',
+        details: row.details || '',
+        status: row.status || 'pending',
+        createdAt: row.created_at,
+        resolvedAt: row.resolved_at,
+        resolvedBy: row.resolved_by,
+    };
+}
 
 function mapUser(row) {
     return {
@@ -564,6 +704,7 @@ function mapUser(row) {
         bio: row.bio || '',
         role: row.role || 'user',
         isVerified: row.is_verified || false,
+        isBanned: row.is_banned || false,
         followersCount: row.followers_count || 0,
         followingCount: row.following_count || 0,
         postsCount: row.posts_count || 0,
@@ -648,15 +789,50 @@ function mapMessage(row) {
 }
 
 // ─── START ───────────────────────────────────────────────────────
-// ── Auto-migrate group columns ──────────────────────────────────
+// ── Auto-migrate ────────────────────────────────────────────────
 async function autoMigrate() {
     try {
         await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_group BOOLEAN DEFAULT false`);
         await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''`);
         await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS created_by TEXT DEFAULT ''`);
-        console.log('✅ Group columns migrated');
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS reports (
+            id TEXT PRIMARY KEY,
+            reporter_id TEXT,
+            reporter_username TEXT DEFAULT '',
+            target_id TEXT NOT NULL,
+            target_type TEXT NOT NULL DEFAULT 'user',
+            reason TEXT NOT NULL DEFAULT '',
+            details TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            resolved_at TIMESTAMPTZ,
+            resolved_by TEXT
+        )`);
+        console.log('✅ All columns migrated');
     } catch (e) {
         console.warn('Migration note:', e.message);
+    }
+
+    // Seed admin user
+    try {
+        const existing = await pool.query("SELECT id FROM users WHERE email = 'admin@gmail.com'");
+        if (existing.rows.length === 0) {
+            const adminId = uuid();
+            const hash = await bcrypt.hash('123456', 10);
+            await pool.query(
+                `INSERT INTO users (id, username, display_name, email, password_hash, photo_url, role, is_verified)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [adminId, 'admin', 'Admin', 'admin@gmail.com', hash,
+                    'https://i.pravatar.cc/150?u=admin', 'admin', true]
+            );
+            console.log('✅ Admin user seeded (admin@gmail.com / 123456)');
+        } else {
+            // Ensure existing admin has correct role
+            await pool.query("UPDATE users SET role = 'admin', is_verified = true WHERE email = 'admin@gmail.com'");
+        }
+    } catch (e) {
+        console.warn('Admin seed note:', e.message);
     }
 }
 

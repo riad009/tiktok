@@ -25,7 +25,7 @@ class ArtistcaseLogo extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.28),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.4),
+            color: AppColors.primary.withValues(alpha: 0.5),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),

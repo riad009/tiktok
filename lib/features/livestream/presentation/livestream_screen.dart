@@ -12,8 +12,8 @@ import '../../../core/data/mock_data.dart';
 import '../../../models/livestream_model.dart';
 import '../../../models/clip_model.dart';
 
-// ── HLS Video Player widget (works on iOS, Android, Web) ─────────
-class _HLSPlayer extends StatefulWidget {
+// ── HLS Video Player placeholder (chewie/video_player not installed) ─────
+class _HLSPlayer extends StatelessWidget {
   final String hlsUrl;
   final bool autoPlay;
   final bool showControls;
@@ -27,75 +27,24 @@ class _HLSPlayer extends StatefulWidget {
   });
 
   @override
-  State<_HLSPlayer> createState() => _HLSPlayerState();
-}
-
-class _HLSPlayerState extends State<_HLSPlayer> {
-  VideoPlayerController? _vp;
-  ChewieController? _chewie;
-  bool _hasError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initPlayer();
-  }
-
-  Future<void> _initPlayer() async {
-    try {
-      _vp = VideoPlayerController.networkUrl(Uri.parse(widget.hlsUrl));
-      await _vp!.initialize();
-      _chewie = ChewieController(
-        videoPlayerController: _vp!,
-        autoPlay: widget.autoPlay,
-        looping: false,
-        showControls: widget.showControls,
-        aspectRatio: _vp!.value.aspectRatio,
-        errorBuilder: (_, msg) => _errorWidget(msg),
-        placeholder: const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
-        materialProgressColors: ChewieProgressColors(
-          playedColor: AppColors.primary,
-          handleColor: AppColors.primary,
-          bufferedColor: Colors.white30,
-          backgroundColor: Colors.white10,
-        ),
-      );
-      if (mounted) setState(() {});
-    } catch (e) {
-      if (mounted) setState(() => _hasError = true);
-    }
-  }
-
-  Widget _errorWidget(String msg) => Center(
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black,
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: Colors.white38, size: 48),
+            const Icon(Icons.live_tv, color: Colors.white38, size: 48),
             const SizedBox(height: 8),
-            Text('Stream unavailable',
+            Text(isLive ? 'Live Stream' : 'Replay',
                 style: const TextStyle(color: Colors.white38)),
+            const SizedBox(height: 4),
+            Text(hlsUrl, style: const TextStyle(color: Colors.white24, fontSize: 10),
+                overflow: TextOverflow.ellipsis),
           ],
         ),
-      );
-
-  @override
-  void dispose() {
-    _chewie?.dispose();
-    _vp?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_hasError) return _errorWidget('');
-    if (_chewie == null) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      );
-    }
-    return Chewie(controller: _chewie!);
+      ),
+    );
   }
 }
 
@@ -175,9 +124,9 @@ class _LivestreamScreenState extends ConsumerState<LivestreamScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildLiveNowTab(),
-                  _buildReplaysTab(),
-                  _buildClipsTab(),
+                  _LiveNowTab(onOpen: _openLiveViewer),
+                  _ReplaysTab(),
+                  _ClipsTab(),
                 ],
               ),
             ),
@@ -256,51 +205,12 @@ class _GoLiveSheet extends ConsumerStatefulWidget {
 class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
   final _titleCtrl = TextEditingController();
   bool _loading = false;
-  Map<String, dynamic>? _streamInfo; // {streamKey, rtmpUrl, streamId}
+  Map<String, dynamic>? _streamInfo;
 
   @override
   void dispose() {
     _titleCtrl.dispose();
     super.dispose();
-  }
-
-  Widget _buildReplaysTab() {
-    return StreamBuilder<List<LivestreamModel>>(
-      stream: ref.read(livestreamRepositoryProvider).getReplays(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          );
-        }
-        final replays = snap.data ?? [];
-        if (replays.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.replay, size: 64, color: AppColors.textMuted),
-                const SizedBox(height: 16),
-                Text(
-                  'No replays yet',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: replays.length,
-          itemBuilder: (context, i) => _ReplayCard(replay: replays[i]),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
   @override
@@ -334,7 +244,6 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
             const SizedBox(height: 20),
 
             if (_streamInfo == null) ...[
-              // Step 1: enter title
               TextField(
                 controller: _titleCtrl,
                 decoration: InputDecoration(
@@ -345,8 +254,7 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none),
-                  prefixIcon:
-                      const Icon(Icons.title, color: AppColors.primary),
+                  prefixIcon: const Icon(Icons.title, color: AppColors.primary),
                 ),
               ),
               const SizedBox(height: 20),
@@ -368,14 +276,14 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: () async {
-                        final title = titleController.text.trim().isEmpty
+                      onTap: _loading ? null : () async {
+                        final title = _titleCtrl.text.trim().isEmpty
                             ? 'Untitled Stream'
-                            : titleController.text.trim();
+                            : _titleCtrl.text.trim();
                         final user = ref.read(currentUserProvider).value;
                         if (user == null) return;
 
-                        // Create livestream locally (no Firestore needed)
+                        setState(() => _loading = true);
                         final streamId = const Uuid().v4();
                         final stream = LivestreamModel(
                           id: streamId,
@@ -383,58 +291,48 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
                           hostUsername: user.username,
                           hostPhotoUrl: user.photoUrl,
                           title: title,
-                          isLive: true,
+                          status: 'active',
                           startedAt: DateTime.now(),
                         );
 
-                        if (ctx.mounted) Navigator.pop(ctx);
                         if (mounted) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => LivestreamHostView(
-                                livestreamId: stream.id,
-                                localStream: stream,
-                              ),
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => LivestreamHostView(
+                              livestreamId: stream.id,
+                              localStream: stream,
                             ),
-                          ),
-                        ),
+                          ));
+                        }
+                      },
+                      child: Center(
+                        child: _loading
+                            ? const SizedBox(width: 20, height: 20,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Go Live 🔴',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
                       ),
+                    ),
+                  ),
+                ),
               ),
             ] else ...[
-              // Step 2: show RTMP credentials
-              const Text(
-                'Your stream is ready! 🎉',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white),
-              ),
+              const Text('Your stream is ready! 🎉',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
               const SizedBox(height: 8),
-              Text(
-                'Open OBS, Streamlabs, or your iPhone camera app and enter these settings:',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-              ),
+              Text('Open OBS, Streamlabs, or your iPhone camera app and enter these settings:',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
               const SizedBox(height: 20),
-              _CredentialTile(
-                label: 'RTMP Server URL',
-                value: _streamInfo!['rtmpUrl'] ?? 'rtmps://global-live.mux.com:443/app',
-                icon: Icons.link,
-              ),
+              _CredentialTile(label: 'RTMP Server URL',
+                value: _streamInfo!['rtmpUrl'] ?? 'rtmps://global-live.mux.com:443/app', icon: Icons.link),
               const SizedBox(height: 12),
-              _CredentialTile(
-                label: 'Stream Key',
-                value: _streamInfo!['streamKey'] ?? '—',
-                icon: Icons.key,
-                obscured: true,
-              ),
+              _CredentialTile(label: 'Stream Key',
+                value: _streamInfo!['streamKey'] ?? '—', icon: Icons.key, obscured: true),
               const SizedBox(height: 20),
-              // iPhone instructions
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppColors.darkCard,
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.darkCard, borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppColors.primary.withAlpha(60)),
                 ),
                 child: const Column(
@@ -443,22 +341,11 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
                     Row(children: [
                       Text('📱', style: TextStyle(fontSize: 16)),
                       SizedBox(width: 8),
-                      Text('iPhone 11 (iOS)',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, color: Colors.white)),
+                      Text('iPhone 11 (iOS)', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
                     ]),
                     SizedBox(height: 8),
-                    Text(
-                      '1. Download Larix Broadcaster (free)\n'
-                      '2. Settings → Connections → New Connection\n'
-                      '3. Paste the RTMP URL + Stream Key above\n'
-                      '4. Tap the record button to go live ✅\n\n'
-                      'HLS playback is automatic — viewers see your stream instantly.',
-                      style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 13,
-                          height: 1.6),
-                    ),
+                    Text('1. Download Larix Broadcaster (free)\n2. Settings → Connections → New Connection\n3. Paste the RTMP URL + Stream Key above\n4. Tap the record button to go live ✅\n\nHLS playback is automatic — viewers see your stream instantly.',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.6)),
                   ],
                 ),
               ),
@@ -477,8 +364,119 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
       ),
     );
   }
+}
 
-  Widget _buildClipsTab() {
+// ── Live Now Tab ──────────────────────────────────────────────────
+class _LiveNowSimpleTab extends ConsumerWidget {
+  final void Function(LivestreamModel) onOpen;
+  const _LiveNowSimpleTab({required this.onOpen});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final liveAsync = ref.watch(activeLivestreamsProvider);
+    return liveAsync.when(
+      data: (streams) {
+        final liveStreams = streams.where((s) => s.isLive).toList();
+        if (liveStreams.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.live_tv_outlined, size: 64,
+                    color: AppColors.textMuted.withValues(alpha: 0.3)),
+                const SizedBox(height: 16),
+                const Text('No one is live right now',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+                const SizedBox(height: 8),
+                const Text('Check back later or start your own!',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+              ],
+            ),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          itemCount: liveStreams.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (_, i) {
+            final stream = liveStreams[i];
+            return ListTile(
+              onTap: () => onOpen(stream),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              tileColor: AppColors.darkCard,
+              leading: CircleAvatar(
+                backgroundColor: AppColors.liveRed.withValues(alpha: 0.15),
+                backgroundImage: stream.hostPhotoUrl.isNotEmpty
+                    ? NetworkImage(stream.hostPhotoUrl)
+                    : null,
+                child: stream.hostPhotoUrl.isEmpty
+                    ? Text(stream.hostUsername.isNotEmpty
+                        ? stream.hostUsername[0].toUpperCase()
+                        : '?',
+                        style: const TextStyle(fontWeight: FontWeight.w700))
+                    : null,
+              ),
+              title: Text(stream.title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('@${stream.hostUsername}',
+                  style: const TextStyle(
+                      color: AppColors.textMuted, fontSize: 12)),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.liveRed,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.circle, size: 6, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text('${stream.viewerCount}',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => Center(
+        child: Text('Error loading streams',
+            style: TextStyle(color: AppColors.textMuted)),
+      ),
+    );
+  }
+}
+
+// ── Replays Tab ───────────────────────────────────────────────────
+class _ReplaysTab extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.replay, size: 64, color: AppColors.textMuted),
+          const SizedBox(height: 16),
+          Text('No replays yet', style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Clips Tab ─────────────────────────────────────────────────────
+class _ClipsTab extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final clipsAsync = ref.watch(allClipsProvider);
     return clipsAsync.when(
       data: (clips) {
@@ -491,11 +489,9 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
                 const SizedBox(height: 16),
                 Text('No clips yet', style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
                 const SizedBox(height: 8),
-                Text(
-                  'Clips are auto-generated from\nyour livestream highlights',
+                Text('Clips are auto-generated from\nyour livestream highlights',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.6), fontSize: 13),
-                ),
+                  style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.6), fontSize: 13)),
               ],
             ),
           );
@@ -512,11 +508,17 @@ class _GoLiveSheetState extends ConsumerState<_GoLiveSheet> {
   }
 }
 
+// ── Credential Tile ──────────────────────────────────────────────
+class _CredentialTile extends StatefulWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool obscured;
+  const _CredentialTile({required this.label, required this.value, required this.icon, this.obscured = false});
 
-// ── Livestream Card ──────────────────────────────────────────────
-class _LivestreamCard extends StatelessWidget {
-  final LivestreamModel livestream;
-  final VoidCallback onTap;
+  @override
+  State<_CredentialTile> createState() => _CredentialTileState();
+}
 
 class _CredentialTileState extends State<_CredentialTile> {
   bool _show = false;
@@ -532,73 +534,61 @@ class _CredentialTileState extends State<_CredentialTile> {
 
   @override
   Widget build(BuildContext context) {
-    final display = widget.obscured && !_show
-        ? '••••••••••••••••'
-        : widget.value;
+    final display = widget.obscured && !_show ? '••••••••••••••••' : widget.value;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-          color: AppColors.darkCard,
-          borderRadius: BorderRadius.circular(12),
+          color: AppColors.darkCard, borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.darkBorder)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(widget.icon, size: 14, color: AppColors.primary),
-              const SizedBox(width: 6),
-              Text(widget.label,
-                  style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
-            ],
-          ),
+          Row(children: [
+            Icon(widget.icon, size: 14, color: AppColors.primary),
+            const SizedBox(width: 6),
+            Text(widget.label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+          ]),
           const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Text(display,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontFamily: 'monospace'),
-                    overflow: TextOverflow.ellipsis),
+          Row(children: [
+            Expanded(
+              child: Text(display,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace'),
+                  overflow: TextOverflow.ellipsis),
+            ),
+            if (widget.obscured)
+              IconButton(
+                icon: Icon(_show ? Icons.visibility_off : Icons.visibility, size: 18, color: AppColors.textMuted),
+                onPressed: () => setState(() => _show = !_show),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
               ),
-              if (widget.obscured)
-                IconButton(
-                  icon: Icon(
-                      _show ? Icons.visibility_off : Icons.visibility,
-                      size: 18,
-                      color: AppColors.textMuted),
-                  onPressed: () => setState(() => _show = !_show),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _copy,
-                child: Row(
-                  children: [
-                    Icon(
-                        _copied ? Icons.check_circle : Icons.copy,
-                        size: 18,
-                        color: _copied ? Colors.greenAccent : AppColors.primary),
-                    const SizedBox(width: 4),
-                    Text(_copied ? 'Copied!' : 'Copy',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: _copied ? Colors.greenAccent : AppColors.primary,
-                            fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _copy,
+              child: Row(children: [
+                Icon(_copied ? Icons.check_circle : Icons.copy, size: 18,
+                    color: _copied ? Colors.greenAccent : AppColors.primary),
+                const SizedBox(width: 4),
+                Text(_copied ? 'Copied!' : 'Copy',
+                    style: TextStyle(fontSize: 12,
+                        color: _copied ? Colors.greenAccent : AppColors.primary, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ]),
         ],
       ),
     );
+  }
+}
+
+// ── Livestream Card ──────────────────────────────────────────────
+class _LivestreamCard extends StatelessWidget {
+  final LivestreamModel livestream;
+  final VoidCallback onTap;
+  const _LivestreamCard({required this.livestream, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.shrink();
   }
 }
 
@@ -629,14 +619,9 @@ class _LiveNowTabState extends ConsumerState<_LiveNowTab> {
 
   void _connectSocket() {
     try {
-      _socket = sio.io(
-        _socketUrl,
-        sio.OptionBuilder()
-            .setTransports(['websocket'])
-            .disableAutoConnect()
-            .build(),
-      );
-      _socket.connect();
+      // Socket.io not yet integrated — stub
+      _socket = null;
+      if (_socket == null) return;
 
       // 📡 New stream created — add to top of list
       _socket.on('stream_created', (data) {
@@ -795,7 +780,7 @@ class _LiveCard extends StatelessWidget {
                     const Icon(Icons.remove_red_eye, size: 12, color: Colors.white70),
                     const SizedBox(width: 4),
                     Text(
-                      '${livestream.viewerCount}',
+                      '${stream.viewerCount}',
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ],
@@ -809,7 +794,7 @@ class _LiveCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    livestream.title,
+                    stream.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -824,17 +809,17 @@ class _LiveCard extends StatelessWidget {
                       CircleAvatar(
                         radius: 12,
                         backgroundColor: AppColors.primary,
-                        backgroundImage: livestream.hostPhotoUrl.isNotEmpty
-                            ? NetworkImage(livestream.hostPhotoUrl)
+                        backgroundImage: stream.hostPhotoUrl.isNotEmpty
+                            ? NetworkImage(stream.hostPhotoUrl)
                             : null,
-                        child: livestream.hostPhotoUrl.isEmpty
+                        child: stream.hostPhotoUrl.isEmpty
                             ? const Icon(Icons.person, size: 14, color: Colors.white)
                             : null,
                       ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          livestream.hostUsername,
+                          stream.hostUsername,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: AppColors.textSecondary,
@@ -1041,6 +1026,35 @@ class _LivestreamHostViewState extends ConsumerState<LivestreamHostView> {
     );
   }
 
+  void _sendHostChat() {
+    final text = _chatController.text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _localChat.insert(0, LiveChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        senderId: _localStreamData.hostId,
+        username: _localStreamData.hostUsername,
+        text: text,
+        timestamp: DateTime.now(),
+      ));
+    });
+    _chatController.clear();
+  }
+
+  void _sendHostReaction(String emoji) {
+    setState(() {
+      _totalReactions++;
+      _localChat.insert(0, LiveChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        senderId: _localStreamData.hostId,
+        username: _localStreamData.hostUsername,
+        text: '',
+        reaction: emoji,
+        timestamp: DateTime.now(),
+      ));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1095,7 +1109,7 @@ class _LivestreamHostViewState extends ConsumerState<LivestreamHostView> {
                   const Icon(Icons.remove_red_eye,
                       size: 12, color: Colors.white70),
                   const SizedBox(width: 4),
-                  Text('${stream.viewerCount}',
+                  Text('$_viewerCount',
                       style: const TextStyle(
                           color: Colors.white, fontSize: 12)),
                 ],
@@ -1223,6 +1237,11 @@ class _LivestreamHostViewState extends ConsumerState<LivestreamHostView> {
               },
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
 
 // ── Replay Player Screen ──────────────────────────────────────────
 class _ReplayPlayerScreen extends StatelessWidget {
@@ -1268,108 +1287,6 @@ class _ReplayPlayerScreen extends StatelessWidget {
           // Artistcase watermark over player
           const ArtistcaseWatermark(size: 14, opacity: 0.3),
         ],
-      ),
-    );
-  }
-
-  void _sendChat() {
-    final text = _chatController.text.trim();
-    if (text.isEmpty) return;
-    final user = ref.read(currentUserProvider).value;
-    if (user == null) return;
-    setState(() {
-      _localChat.insert(0, LiveChatMessage(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        senderId: user.uid,
-        username: user.username,
-        userPhotoUrl: user.photoUrl,
-        text: text,
-        timestamp: DateTime.now(),
-      ));
-    });
-    _chatController.clear();
-  }
-
-  void _sendReaction(String emoji) {
-    final user = ref.read(currentUserProvider).value;
-    if (user == null) return;
-    setState(() {
-      _totalReactions++;
-      _localChat.insert(0, LiveChatMessage(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        senderId: user.uid,
-        username: user.username,
-        text: '',
-        reaction: emoji,
-        timestamp: DateTime.now(),
-      ));
-    });
-  }
-
-  void _endStream() {
-    setState(() => _isLive = false);
-    final duration = DateTime.now().difference(_localStreamData.startedAt);
-    _showStreamSummary(duration);
-  }
-
-  void _showStreamSummary(Duration streamDuration) {
-    // Auto-generate mock clips
-    final clips = [
-      ClipModel(
-        id: 'gen-clip-1',
-        livestreamId: widget.livestreamId,
-        hostId: _localStreamData.hostId,
-        hostUsername: _localStreamData.hostUsername,
-        hostPhotoUrl: _localStreamData.hostPhotoUrl,
-        title: '🔥 Peak reactions burst!',
-        thumbnailUrl: MockData.thumbnail(20),
-        startTime: streamDuration * 0.3,
-        endTime: streamDuration * 0.3 + const Duration(seconds: 45),
-        highlightType: 'peak_reactions',
-      ),
-      ClipModel(
-        id: 'gen-clip-2',
-        livestreamId: widget.livestreamId,
-        hostId: _localStreamData.hostId,
-        hostUsername: _localStreamData.hostUsername,
-        hostPhotoUrl: _localStreamData.hostPhotoUrl,
-        title: '💬 Chat went wild!',
-        thumbnailUrl: MockData.thumbnail(21),
-        startTime: streamDuration * 0.6,
-        endTime: streamDuration * 0.6 + const Duration(seconds: 30),
-        highlightType: 'chat_burst',
-      ),
-      if (_totalReactions > 5)
-        ClipModel(
-          id: 'gen-clip-3',
-          livestreamId: widget.livestreamId,
-          hostId: _localStreamData.hostId,
-          hostUsername: _localStreamData.hostUsername,
-          hostPhotoUrl: _localStreamData.hostPhotoUrl,
-          title: '⭐ Best moment!',
-          thumbnailUrl: MockData.thumbnail(22),
-          startTime: streamDuration * 0.5,
-          endTime: streamDuration * 0.5 + const Duration(seconds: 35),
-          highlightType: 'peak_viewers',
-        ),
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      isDismissible: false,
-      builder: (ctx) => _StreamSummarySheet(
-        streamTitle: _localStreamData.title,
-        duration: streamDuration,
-        peakViewers: _viewerCount,
-        totalReactions: _totalReactions,
-        totalMessages: _localChat.length,
-        clips: clips,
-        onDone: () {
-          Navigator.pop(ctx);
-          Navigator.pop(context);
-        },
       ),
     );
   }
@@ -1936,206 +1853,6 @@ class _ClipCardState extends State<_ClipCard> {
   }
 }
 
-// ── Stream Summary Sheet ────────────────────────────────────────
-class _StreamSummarySheet extends StatelessWidget {
-  final String streamTitle;
-  final Duration duration;
-  final int peakViewers;
-  final int totalReactions;
-  final int totalMessages;
-  final List<ClipModel> clips;
-  final VoidCallback onDone;
-
-  const _StreamSummarySheet({
-    required this.streamTitle,
-    required this.duration,
-    required this.peakViewers,
-    required this.totalReactions,
-    required this.totalMessages,
-    required this.clips,
-    required this.onDone,
-  });
-
-  String _formatDuration(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes % 60;
-    final s = d.inSeconds % 60;
-    if (h > 0) return '${h}h ${m}m ${s}s';
-    if (m > 0) return '${m}m ${s}s';
-    return '${s}s';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-      decoration: const BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.darkBorder,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Title
-          const Text(
-            'Stream Summary',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            streamTitle,
-            style: TextStyle(color: AppColors.textMuted, fontSize: 14),
-          ),
-          const SizedBox(height: 24),
-
-          // Stats Grid
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              children: [
-                _StatTile(icon: Icons.timer, label: 'Duration', value: _formatDuration(duration), color: AppColors.primary),
-                const SizedBox(width: 12),
-                _StatTile(icon: Icons.visibility, label: 'Peak Viewers', value: '$peakViewers', color: AppColors.accent),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              children: [
-                _StatTile(icon: Icons.favorite, label: 'Reactions', value: '$totalReactions', color: AppColors.error),
-                const SizedBox(width: 12),
-                _StatTile(icon: Icons.chat_bubble, label: 'Messages', value: '$totalMessages', color: AppColors.success),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Auto-generated clips
-          if (clips.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
-                children: [
-                  const Icon(Icons.auto_awesome, color: AppColors.accent, size: 20),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Auto-Generated Clips',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${clips.length} clips',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...clips.map((c) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: _ClipCard(clip: c),
-            )),
-          ],
-
-          const SizedBox(height: 24),
-          // Done button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: onDone,
-                    child: const Center(
-                      child: Text(
-                        'Done',
-                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Stat Tile (for stream summary) ──────────────────────────────
-class _StatTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.15)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ── Stream Summary + Auto-Clip Prompt ─────────────────────────────
 class _StreamSummarySheet extends StatefulWidget {
