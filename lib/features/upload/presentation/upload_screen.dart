@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gradient_button.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/services/api_service.dart';
+import 'video_editor_screen.dart';
 
 class UploadScreen extends ConsumerStatefulWidget {
   const UploadScreen({super.key});
@@ -134,26 +135,35 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Post type selector
-            Row(
-              children: [
-                _TypeChip(
-                  label: '✍️ Text',
-                  selected: _postType == 'text',
-                  onTap: () => setState(() => _postType = 'text'),
-                ),
-                const SizedBox(width: 10),
-                _TypeChip(
-                  label: '📷 Image',
-                  selected: _postType == 'image',
-                  onTap: () => setState(() => _postType = 'image'),
-                ),
-                const SizedBox(width: 10),
-                _TypeChip(
-                  label: '🔗 URL',
-                  selected: _postType == 'url',
-                  onTap: () => setState(() => _postType = 'url'),
-                ),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _TypeChip(
+                    label: '✍️ Text',
+                    selected: _postType == 'text',
+                    onTap: () => setState(() => _postType = 'text'),
+                  ),
+                  const SizedBox(width: 10),
+                  _TypeChip(
+                    label: '📷 Image',
+                    selected: _postType == 'image',
+                    onTap: () => setState(() => _postType = 'image'),
+                  ),
+                  const SizedBox(width: 10),
+                  _TypeChip(
+                    label: '🔗 URL',
+                    selected: _postType == 'url',
+                    onTap: () => setState(() => _postType = 'url'),
+                  ),
+                  const SizedBox(width: 10),
+                  _TypeChip(
+                    label: '🎬 Video',
+                    selected: _postType == 'video',
+                    onTap: () => setState(() => _postType = 'video'),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -260,6 +270,64 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 20),
+            ],
+
+            // Video editor launcher
+            if (_postType == 'video') ...[
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VideoEditorScreen()),
+                ),
+                child: Container(
+                  height: 220,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppColors.primary.withValues(alpha: 0.12),
+                        AppColors.secondary.withValues(alpha: 0.12),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.darkBorder, width: 2),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.3),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.movie_creation_outlined,
+                            size: 36, color: Colors.white),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Edit in Studio',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      const Text(
+                          'Filters · Trim · Captions · Tags · Watermark · Music',
+                          style: TextStyle(
+                              color: AppColors.textMuted, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 20),
             ],
 
