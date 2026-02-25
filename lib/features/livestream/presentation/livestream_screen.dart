@@ -6,7 +6,7 @@ import 'package:chewie/chewie.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/services/api_service.dart';
-import '../../../core/widgets/live_badge.dart';
+import '../../../core/widgets/live_badge.dart' hide AnimatedBuilder;
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/artistcase_logo.dart';
 import '../../../models/livestream_model.dart';
@@ -853,7 +853,7 @@ class _ReplayPlayerScreen extends StatelessWidget {
   }
 }
 
-// ── Viewer Screen — real HLS from Mux ────────────────────────────
+// ── Viewer Screen — Socket.io + HLS from Mux ─────────────────────
 class LivestreamViewerScreen extends ConsumerStatefulWidget {
   final LivestreamModel stream;
   const LivestreamViewerScreen({super.key, required this.stream});
@@ -864,21 +864,47 @@ class LivestreamViewerScreen extends ConsumerStatefulWidget {
 }
 
 class _LivestreamViewerScreenState
-    extends ConsumerState<LivestreamViewerScreen> {
+    extends ConsumerState<LivestreamViewerScreen>
+    with SingleTickerProviderStateMixin {
   final _chatCtrl = TextEditingController();
   final List<Map<String, String>> _chatMessages = [];
+  final List<_FloatingEmoji> _floatingEmojis = [];
+
   int _viewers = 0;
+  bool _hlsReady = false;
+  late AnimationController _emojiAnim;
 
   @override
   void initState() {
     super.initState();
     _viewers = widget.stream.viewerCount;
+    _emojiAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _waitForHls();
   }
 
-  @override
-  void dispose() {
-    _chatCtrl.dispose();
-    super.dispose();
+  /// Poll / wait until HLS stream starts (Mux can take 10–30 s)
+  Future<void> _waitForHls() async {
+    if (widget.stream.playbackUrl.isNotEmpty) {
+      if (mounted) setState(() => _hlsReady = true);
+      return;
+    }
+    int attempts = 0;
+    while (mounted && !_hlsReady && attempts < 20) {
+      await Future.delayed(const Duration(seconds: 2));
+      attempts++;
+    }
+    if (mounted) setState(() => _hlsReady = true);
+  }
+
+  void _addFloatingEmoji(String emoji) {
+    final fe = _FloatingEmoji(emoji: emoji, id: DateTime.now().microsecondsSinceEpoch);
+    setState(() => _floatingEmojis.add(fe));
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _floatingEmojis.remove(fe));
+    });
   }
 
   void _sendChat() {
@@ -890,7 +916,9 @@ class _LivestreamViewerScreenState
       _chatMessages.insert(0, {
         'username': user.username,
         'text': text,
+        'photoUrl': user.photoUrl,
       });
+      if (_chatMessages.length > 100) _chatMessages.removeLast();
     });
     _chatCtrl.clear();
   }
@@ -898,12 +926,21 @@ class _LivestreamViewerScreenState
   void _sendReaction(String emoji) {
     final user = ref.read(authUserProvider);
     if (user == null) return;
+    _addFloatingEmoji(emoji);
     setState(() {
       _chatMessages.insert(0, {
         'username': user.username,
         'text': emoji,
+        'photoUrl': user.photoUrl,
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _chatCtrl.dispose();
+    _emojiAnim.dispose();
+    super.dispose();
   }
 
   @override
@@ -915,36 +952,29 @@ class _LivestreamViewerScreenState
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ── HLS Video (full screen) ─────────────────────────────
+          // ── HLS Video ─────────────────────────────────────────
           Positioned.fill(
-            child: hasHls
+            child: hasHls && _hlsReady
                 ? _HLSPlayer(
                     hlsUrl: playbackUrl,
                     showControls: false,
                     isLive: true,
                   )
-                : Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.live_tv,
-                            size: 64, color: Colors.white12),
-                        const SizedBox(height: 12),
-                        Text(widget.stream.title,
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 18)),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Stream starting...',
-                          style: TextStyle(
-                              color: AppColors.textMuted, fontSize: 14),
-                        ),
-                      ],
-                    ),
+                : _StreamLoadingPlaceholder(
+                    title: widget.stream.title,
+                    isRetrying: !_hlsReady,
                   ),
           ),
 
-          // ── Top bar ─────────────────────────────────────────────
+          // ── Floating emojis ────────────────────────────────────
+          ...(_floatingEmojis.map((fe) => Positioned(
+                right: 70,
+                bottom: 200,
+                child: _FloatingEmojiWidget(
+                    key: ValueKey(fe.id), emoji: fe.emoji),
+              ))),
+
+          // ── Top bar ────────────────────────────────────────────
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 16, right: 16,
@@ -954,31 +984,44 @@ class _LivestreamViewerScreenState
                   radius: 18,
                   backgroundColor: AppColors.primary,
                   backgroundImage: widget.stream.hostPhotoUrl.isNotEmpty
-                      ? NetworkImage(widget.stream.hostPhotoUrl)
-                      : null,
+                      ? NetworkImage(widget.stream.hostPhotoUrl) : null,
                   child: widget.stream.hostPhotoUrl.isEmpty
                       ? const Icon(Icons.person, size: 18, color: Colors.white)
                       : null,
                 ),
                 const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.stream.hostUsername,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14)),
-                    Row(children: [
-                      const LiveBadge(size: 8, showPulse: false),
-                      const SizedBox(width: 6),
-                      Text('$_viewers watching',
-                          style: TextStyle(
-                              color: Colors.white60, fontSize: 12)),
-                    ]),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.stream.hostUsername,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14)),
+                      Row(children: [
+                        const LiveBadge(size: 8, showPulse: true),
+                        const SizedBox(width: 6),
+                        Text('$_viewers watching',
+                            style: const TextStyle(
+                                color: Colors.white60, fontSize: 12)),
+                        const SizedBox(width: 8),
+                        // HD quality badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                              color: Colors.white12,
+                              borderRadius: BorderRadius.circular(4)),
+                          child: const Text('HD',
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 10,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ]),
+                    ],
+                  ),
                 ),
-                const Spacer(),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
@@ -993,9 +1036,9 @@ class _LivestreamViewerScreenState
             ),
           ),
 
-          // ── Chat overlay ────────────────────────────────────────
+          // ── Chat overlay ────────────────────────────────────
           Positioned(
-            left: 12, right: 80, bottom: 76,
+            left: 12, right: 72, bottom: 76,
             height: 240,
             child: ListView.builder(
               reverse: true,
@@ -1031,7 +1074,7 @@ class _LivestreamViewerScreenState
             ),
           ),
 
-          // ── Reaction buttons ────────────────────────────────────
+          // ── Reaction buttons ──────────────────────────────────
           Positioned(
             right: 12, bottom: 110,
             child: Column(
@@ -1054,7 +1097,7 @@ class _LivestreamViewerScreenState
             ),
           ),
 
-          // ── Chat input ──────────────────────────────────────────
+          // ── Chat input ────────────────────────────────────────
           Positioned(
             left: 12, right: 12,
             bottom: MediaQuery.of(context).padding.bottom + 12,
@@ -1085,15 +1128,108 @@ class _LivestreamViewerScreenState
                   decoration: const BoxDecoration(
                       gradient: AppColors.primaryGradient,
                       shape: BoxShape.circle),
-                  child: const Icon(Icons.send, color: Colors.white, size: 20),
+                  child: const Icon(Icons.send,
+                      color: Colors.white, size: 20),
                 ),
               ),
             ]),
           ),
 
-          // ── Artistcase watermark ────────────────────────────────
+          // ── Artistcase watermark ──────────────────────────────
           const ArtistcaseWatermark(size: 14, opacity: 0.25),
         ],
+      ),
+    );
+  }
+}
+
+// ── Stream loading placeholder ────────────────────────────────────
+class _StreamLoadingPlaceholder extends StatelessWidget {
+  final String title;
+  final bool isRetrying;
+  const _StreamLoadingPlaceholder(
+      {required this.title, required this.isRetrying});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.live_tv, size: 64, color: Colors.white12),
+            const SizedBox(height: 16),
+            Text(title,
+                style: const TextStyle(color: Colors.white38, fontSize: 18)),
+            const SizedBox(height: 12),
+            if (isRetrying) ...[
+              const SizedBox(
+                width: 24, height: 24,
+                child: CircularProgressIndicator(
+                    color: AppColors.primary, strokeWidth: 2),
+              ),
+              const SizedBox(height: 8),
+              const Text('Waiting for stream to start...',
+                  style: TextStyle(
+                      color: AppColors.textMuted, fontSize: 13)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Floating emoji reaction ───────────────────────────────────────
+class _FloatingEmoji {
+  final String emoji;
+  final int id;
+  _FloatingEmoji({required this.emoji, required this.id});
+}
+
+class _FloatingEmojiWidget extends StatefulWidget {
+  final String emoji;
+  const _FloatingEmojiWidget({super.key, required this.emoji});
+  @override
+  State<_FloatingEmojiWidget> createState() => _FloatingEmojiWidgetState();
+}
+
+class _FloatingEmojiWidgetState extends State<_FloatingEmojiWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _opacity;
+  late Animation<double> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(seconds: 3));
+    _opacity = Tween<double>(begin: 1.0, end: 0.0).animate(
+        CurvedAnimation(parent: _ctrl, curve: const Interval(0.6, 1.0)));
+    _slide = Tween<double>(begin: 0, end: -120).animate(
+        CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) => Transform.translate(
+        offset: Offset(0, _slide.value),
+        child: Opacity(
+          opacity: _opacity.value,
+          child: Text(widget.emoji,
+              style: const TextStyle(fontSize: 30)),
+        ),
       ),
     );
   }

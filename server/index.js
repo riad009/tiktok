@@ -1,15 +1,103 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
+const { Server: SocketServer } = require('socket.io');
+const Redis = require('ioredis');
 const pool = require('./db');
+const livestreamRouter = require('./routes/livestream');
+require('dotenv').config();
 
 const app = express();
-app.use(cors());
+const httpServer = http.createServer(app);
+
+// ── CORS ─────────────────────────────────────────────────────────
+app.use(cors({ origin: '*', methods: ['GET','POST','PUT','DELETE','PATCH'] }));
 app.use(express.json({ limit: '50mb' }));
 
+// ── Redis (viewer counts & pub/sub) ──────────────────────────────
+const redis = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL)
+  : new Redis({ host: '127.0.0.1', port: 6379, lazyConnect: true });
+redis.on('error', (e) => console.warn('Redis unavailable (non-fatal):', e.message));
+
+// ── Socket.io ────────────────────────────────────────────────────
+const io = new SocketServer(httpServer, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  transports: ['websocket', 'polling'],
+});
+
+io.on('connection', (socket) => {
+  // join a stream room
+  socket.on('join_stream', async ({ streamId, username }) => {
+    socket.join(streamId);
+    socket.data.streamId = streamId;
+    socket.data.username = username;
+    // Increment viewer count in Redis
+    const count = await redis.incr(`viewers:${streamId}`).catch(() => 0);
+    io.to(streamId).emit('viewer_count', count);
+    // Also persist to DB (non-blocking)
+    pool.query(
+      'UPDATE livestreams SET viewer_count = $1, peak_viewers = GREATEST(peak_viewers, $1) WHERE id = $2',
+      [count, streamId]
+    ).catch(() => {});
+  });
+
+  socket.on('leave_stream', async () => {
+    const { streamId } = socket.data;
+    if (!streamId) return;
+    const count = Math.max(0, await redis.decr(`viewers:${streamId}`).catch(() => 0));
+    io.to(streamId).emit('viewer_count', count);
+    pool.query(
+      'UPDATE livestreams SET viewer_count = $1 WHERE id = $2',
+      [count, streamId]
+    ).catch(() => {});
+    socket.leave(streamId);
+  });
+
+  socket.on('disconnect', async () => {
+    const { streamId, username } = socket.data;
+    if (!streamId) return;
+    const count = Math.max(0, await redis.decr(`viewers:${streamId}`).catch(() => 0));
+    io.to(streamId).emit('viewer_count', count);
+    pool.query(
+      'UPDATE livestreams SET viewer_count = $1 WHERE id = $2',
+      [count, streamId]
+    ).catch(() => {});
+  });
+
+  // Live chat message broadcast
+  socket.on('chat_message', ({ streamId, username, text, photoUrl }) => {
+    io.to(streamId).emit('chat_message', {
+      id: uuid(),
+      username,
+      text,
+      photoUrl: photoUrl || '',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Emoji reaction
+  socket.on('reaction', ({ streamId, emoji, username }) => {
+    io.to(streamId).emit('reaction', { emoji, username });
+  });
+});
+
+// ── Livestream routes ─────────────────────────────────────────────
+// Webhook needs raw body, must come before json middleware for that path
+app.post('/api/mux-webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
+  req.body = req.body.toString();
+  next();
+}, (req, res) => {
+  const router = require('./routes/livestream');
+  // Forward to webhook handler in router
+  require('./routes/livestream').handle?.(req, res);
+});
+app.use('/api/livestreams', livestreamRouter);
+
 // ─── Health check ────────────────────────────────────────────────
-app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (_, res) => res.json({ status: 'ok', socketIo: true }));
 
 // ─── AUTH ────────────────────────────────────────────────────────
 
@@ -448,6 +536,10 @@ function mapMessage(row) {
 
 // ─── START ───────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-    console.log(`🚀 Artistcase API running on http://localhost:${PORT}`);
+httpServer.listen(PORT, () => {
+    console.log(`🚀 Artistcase API  →  http://localhost:${PORT}`);
+    console.log(`🔌 Socket.io ready →  ws://localhost:${PORT}`);
 });
+
+// Export io for use in routes if needed
+module.exports.io = io;
