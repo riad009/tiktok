@@ -197,6 +197,28 @@ class ApiService {
     return null;
   }
 
+  static Future<ConversationModel?> createGroupConversation({
+    required String creatorId,
+    required String groupName,
+    required List<String> memberIds,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/conversations/group'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'creatorId': creatorId,
+          'groupName': groupName,
+          'memberIds': memberIds,
+        }),
+      );
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return _parseGroupConversation(jsonDecode(res.body));
+      }
+    } catch (_) {}
+    return null;
+  }
+
   // ── Messages ─────────────────────────────────────────────────
   static Future<List<MessageModel>> getMessages(String conversationId) async {
     final res = await http.get(Uri.parse('$_baseUrl/messages/$conversationId'));
