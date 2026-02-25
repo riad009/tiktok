@@ -334,19 +334,19 @@ class MockData {
     LivestreamModel(
       id: 'live-1', hostId: 'user-004', hostUsername: 'dance_queen',
       hostPhotoUrl: avatar(9), title: 'Live Dance Practice 💃',
-      isLive: true, viewerCount: 1243, totalReactions: 5600,
+      status: 'active', viewerCount: 1243, totalReactions: 5600,
       startedAt: DateTime.now().subtract(const Duration(minutes: 45)),
     ),
     LivestreamModel(
       id: 'live-2', hostId: 'user-003', hostUsername: 'mike_beats',
       hostPhotoUrl: avatar(8), title: 'Making beats live 🎧',
-      isLive: true, viewerCount: 892, totalReactions: 3200,
+      status: 'active', viewerCount: 892, totalReactions: 3200,
       startedAt: DateTime.now().subtract(const Duration(hours: 1)),
     ),
     LivestreamModel(
       id: 'live-3', hostId: 'user-006', hostUsername: 'foodie_emma',
       hostPhotoUrl: avatar(16), title: 'Cooking dinner together! 🍳',
-      isLive: true, viewerCount: 2100, totalReactions: 8900,
+      status: 'active', viewerCount: 2100, totalReactions: 8900,
       startedAt: DateTime.now().subtract(const Duration(minutes: 30)),
     ),
   ];
@@ -355,21 +355,21 @@ class MockData {
     LivestreamModel(
       id: 'replay-1', hostId: 'user-008', hostUsername: 'fitness_nina',
       hostPhotoUrl: avatar(20), title: 'Morning HIIT Session 💪',
-      isLive: false, viewerCount: 4500, totalReactions: 12000,
+      status: 'ended', viewerCount: 4500, totalReactions: 12000,
       startedAt: DateTime.now().subtract(const Duration(days: 1)),
       endedAt: DateTime.now().subtract(const Duration(hours: 22)),
     ),
     LivestreamModel(
       id: 'replay-2', hostId: 'user-007', hostUsername: 'traveler_jay',
       hostPhotoUrl: avatar(14), title: 'Live from Tokyo streets 🇯🇵',
-      isLive: false, viewerCount: 8900, totalReactions: 23000,
+      status: 'ended', viewerCount: 8900, totalReactions: 23000,
       startedAt: DateTime.now().subtract(const Duration(days: 2)),
       endedAt: DateTime.now().subtract(const Duration(days: 1, hours: 21)),
     ),
     LivestreamModel(
       id: 'replay-3', hostId: 'mock-admin-uid-001', hostUsername: 'admin',
       hostPhotoUrl: avatar(1), title: 'Platform Q&A 🎙️',
-      isLive: false, viewerCount: 3200, totalReactions: 8400,
+      status: 'ended', viewerCount: 3200, totalReactions: 8400,
       startedAt: DateTime.now().subtract(const Duration(days: 3)),
       endedAt: DateTime.now().subtract(const Duration(days: 2, hours: 22)),
     ),

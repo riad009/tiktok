@@ -130,9 +130,29 @@ final trendingHashtagsProvider = FutureProvider<Map<String, int>>((ref) async {
   return MockData.trendingHashtags;
 });
 
-// ── Livestreams (mock) ──────────────────────────────────────────
-final activeLivestreamsProvider = StreamProvider<List<LivestreamModel>>((ref) {
-  return Stream.value(MockData.activeLivestreams);
+// ── Livestreams ──────────────────────────────────────────────────
+final activeLivestreamsProvider = FutureProvider<List<LivestreamModel>>((ref) async {
+  try {
+    final data = await ApiService.getLivestreams();
+    if (data.isNotEmpty) {
+      return data.map((j) => LivestreamModel(
+        id: j['id'] ?? '',
+        hostId: j['hostId'] ?? '',
+        hostUsername: j['hostUsername'] ?? '',
+        hostPhotoUrl: j['hostPhotoUrl'] ?? '',
+        title: j['title'] ?? 'Live',
+        viewerCount: j['viewerCount'] ?? 0,
+        peakViewers: j['peakViewers'] ?? 0,
+        status: j['status'] ?? 'active',
+        startedAt: DateTime.tryParse(j['startedAt']?.toString() ?? '') ?? DateTime.now(),
+        playbackUrl: j['playbackUrl'] ?? '',
+        muxStreamId: j['muxStreamId'] ?? '',
+        muxPlaybackId: j['muxPlaybackId'] ?? '',
+        streamKey: j['streamKey'] ?? '',
+      )).toList();
+    }
+  } catch (_) {}
+  return MockData.activeLivestreams;
 });
 
 final livestreamProvider = StreamProvider.family<LivestreamModel?, String>((ref, id) {
@@ -156,6 +176,15 @@ final liveChatProvider = StreamProvider.family<List<LiveChatMessage>, String>((r
     LiveChatMessage(id: 'lc4', senderId: 'user-008', username: 'fitness_nina',
       text: '🙌🙌🙌', timestamp: DateTime.now()),
   ]);
+});
+
+// ── User Replays (Mux VOD) ──────────────────────────────────────
+final userReplaysProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, userId) async {
+  try {
+    return await ApiService.getUserReplays(userId);
+  } catch (_) {
+    return [];
+  }
 });
 
 // ── Reports (mock admin) ────────────────────────────────────────
