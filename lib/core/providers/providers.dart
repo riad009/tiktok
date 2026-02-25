@@ -56,12 +56,11 @@ final currentUidProvider = Provider<String?>((ref) {
 /// AuthGate waits on this before deciding which screen to show.
 final sessionProvider = FutureProvider<UserModel?>((ref) async {
   try {
-    final saved = await AuthPersistence.restore();
-    if (saved != null) {
-      ApiService.setToken(saved.token);
+    final user = await AuthPersistence.loadUser();
+    if (user != null) {
       // Update the authUserProvider with the restored user
-      ref.read(authUserProvider.notifier).state = saved.user;
-      return saved.user;
+      ref.read(authUserProvider.notifier).state = user;
+      return user;
     }
   } catch (_) {}
   return null;

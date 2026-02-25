@@ -34,12 +34,13 @@ class LivestreamModel {
 
   final DateTime startedAt;
   final DateTime? endedAt;
-  final String replayUrl;
-  final List<String> viewerIds;
-  final int totalReactions;
-  final int peakViewers;
-  final List<String> notifiedFollowers;
-  final List<String> clipIds;
+
+  // Mux fields
+  final String playbackUrl;
+  final String muxStreamId;
+  final String muxPlaybackId;
+  final String streamKey;
+  final String replayPlaybackUrl;
 
   LivestreamModel({
     required this.id,
@@ -53,52 +54,34 @@ class LivestreamModel {
     this.status = 'idle',
     DateTime? startedAt,
     this.endedAt,
-    this.replayUrl = '',
-    this.viewerIds = const [],
-    this.totalReactions = 0,
-    this.peakViewers = 0,
-    this.notifiedFollowers = const [],
-    this.clipIds = const [],
+    this.playbackUrl = '',
+    this.muxStreamId = '',
+    this.muxPlaybackId = '',
+    this.streamKey = '',
+    this.replayPlaybackUrl = '',
   }) : startedAt = startedAt ?? DateTime.now();
 
-  factory LivestreamModel.fromMap(Map<String, dynamic> map, String docId) {
-    return LivestreamModel(
-      id: docId,
-      hostId: map['hostId'] ?? '',
-      hostUsername: map['hostUsername'] ?? '',
-      hostPhotoUrl: map['hostPhotoUrl'] ?? '',
-      title: map['title'] ?? '',
-      viewerCount: map['viewerCount'] ?? 0,
-      isLive: map['isLive'] ?? false,
-      startedAt: (map['startedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      endedAt: (map['endedAt'] as Timestamp?)?.toDate(),
-      replayUrl: map['replayUrl'] ?? '',
-      viewerIds: List<String>.from(map['viewerIds'] ?? []),
-      totalReactions: map['totalReactions'] ?? 0,
-      peakViewers: map['peakViewers'] ?? 0,
-      notifiedFollowers: List<String>.from(map['notifiedFollowers'] ?? []),
-      clipIds: List<String>.from(map['clipIds'] ?? []),
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'hostId': hostId,
-      'hostUsername': hostUsername,
-      'hostPhotoUrl': hostPhotoUrl,
-      'title': title,
-      'viewerCount': viewerCount,
-      'isLive': isLive,
-      'startedAt': Timestamp.fromDate(startedAt),
-      'endedAt': endedAt != null ? Timestamp.fromDate(endedAt!) : null,
-      'replayUrl': replayUrl,
-      'viewerIds': viewerIds,
-      'totalReactions': totalReactions,
-      'peakViewers': peakViewers,
-      'notifiedFollowers': notifiedFollowers,
-      'clipIds': clipIds,
-    };
-  }
+  factory LivestreamModel.fromJson(Map<String, dynamic> j) => LivestreamModel(
+        id: j['id']?.toString() ?? '',
+        hostId: j['hostId']?.toString() ?? '',
+        hostUsername: j['hostUsername']?.toString() ?? '',
+        hostPhotoUrl: j['hostPhotoUrl']?.toString() ?? '',
+        title: j['title']?.toString() ?? 'Live',
+        viewerCount: j['viewerCount'] is int ? j['viewerCount'] : 0,
+        peakViewers: j['peakViewers'] is int ? j['peakViewers'] : 0,
+        totalReactions: j['totalReactions'] is int ? j['totalReactions'] : 0,
+        status: j['status']?.toString() ?? 'idle',
+        startedAt: DateTime.tryParse(j['startedAt']?.toString() ?? '') ??
+            DateTime.now(),
+        endedAt: j['endedAt'] != null
+            ? DateTime.tryParse(j['endedAt'].toString())
+            : null,
+        playbackUrl: j['playbackUrl']?.toString() ?? '',
+        muxStreamId: j['muxStreamId']?.toString() ?? '',
+        muxPlaybackId: j['muxPlaybackId']?.toString() ?? '',
+        streamKey: j['streamKey']?.toString() ?? '',
+        replayPlaybackUrl: j['replayPlaybackUrl']?.toString() ?? '',
+      );
 
   LivestreamModel copyWith({
     String? id,
@@ -108,8 +91,8 @@ class LivestreamModel {
     String? title,
     int? viewerCount,
     int? peakViewers,
-    List<String>? notifiedFollowers,
-    List<String>? clipIds,
+    String? status,
+    String? playbackUrl,
   }) {
     return LivestreamModel(
       id: id ?? this.id,
@@ -119,29 +102,12 @@ class LivestreamModel {
       title: title ?? this.title,
       viewerCount: viewerCount ?? this.viewerCount,
       peakViewers: peakViewers ?? this.peakViewers,
-      notifiedFollowers: notifiedFollowers ?? this.notifiedFollowers,
-      clipIds: clipIds ?? this.clipIds,
+      status: status ?? this.status,
+      playbackUrl: playbackUrl ?? this.playbackUrl,
+      muxStreamId: muxStreamId,
+      muxPlaybackId: muxPlaybackId,
+      streamKey: streamKey,
+      replayPlaybackUrl: replayPlaybackUrl,
     );
   }
-
-  factory LivestreamModel.fromJson(Map<String, dynamic> j) => LivestreamModel(
-        id: j['id'] ?? '',
-        hostId: j['hostId'] ?? '',
-        hostUsername: j['hostUsername'] ?? '',
-        hostPhotoUrl: j['hostPhotoUrl'] ?? '',
-        title: j['title'] ?? 'Live',
-        viewerCount: j['viewerCount'] ?? 0,
-        peakViewers: j['peakViewers'] ?? 0,
-        totalReactions: j['totalReactions'] ?? 0,
-        status: j['status'] ?? 'idle',
-        startedAt: DateTime.tryParse(j['startedAt']?.toString() ?? '') ??
-            DateTime.now(),
-        endedAt: j['endedAt'] != null
-            ? DateTime.tryParse(j['endedAt'].toString())
-            : null,
-        playbackUrl: j['playbackUrl'] ?? '',
-        muxStreamId: j['muxStreamId'] ?? '',
-        muxPlaybackId: j['muxPlaybackId'] ?? '',
-        streamKey: j['streamKey'] ?? '',
-      );
 }

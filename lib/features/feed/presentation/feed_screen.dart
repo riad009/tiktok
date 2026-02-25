@@ -141,7 +141,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 onPageChanged: (page) => _currentPage = page,
                 itemCount: videos.length,
                 itemBuilder: (context, index) =>
-                    _PostCard(video: videos[index]),
+                    _PostCard(video: videos[index], isActive: true),
               ),
             ),
           );
@@ -171,16 +171,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       ),
     );
   }
-}
-
-// Makes mouse wheel / trackpad also trigger page snapping on Flutter Web
-class _WebScrollBehavior extends MaterialScrollBehavior {
-  @override
-  Set<PointerDeviceKind> get dragDevices => {
-        PointerDeviceKind.touch,
-        PointerDeviceKind.mouse,
-        PointerDeviceKind.trackpad,
-      };
 }
 
 // ── Post card ─────────────────────────────────────────────────────

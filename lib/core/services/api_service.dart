@@ -16,6 +16,12 @@ class ApiService {
   /// Public accessor for the API base URL (used by music search proxy etc.)
   static String get baseUrl => _baseUrl;
 
+  /// JWT token for authenticated requests.
+  static String? _token;
+
+  /// Sets the JWT token (called after login/signup/restore).
+  static void setToken(String? token) => _token = token;
+
   // ── Auth ─────────────────────────────────────────────────────
   static Future<UserModel?> signup({
     required String username,
@@ -249,15 +255,16 @@ class ApiService {
   }
 
   // ── Livestreams (Mux) ────────────────────────────────────────
-  /// Creates a Mux live stream. Returns {streamKey, rtmpUrl, streamId, playbackId}
+  /// Creates a live stream. Uses /mock endpoint for demo (no Mux keys needed).
+  /// For production, change '/livestreams/mock' → '/livestreams'.
   static Future<Map<String, dynamic>?> createStream({
     required String userId,
     required String title,
   }) async {
     try {
       final res = await http.post(
-        Uri.parse('$_baseUrl/livestreams'),
-        headers: _headers,
+        Uri.parse('$_baseUrl/livestreams/mock'),
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'userId': userId, 'title': title}),
       );
       if (res.statusCode == 200 || res.statusCode == 201) {

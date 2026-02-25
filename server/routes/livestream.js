@@ -27,6 +27,67 @@ const RTMP_BASE_URL = 'rtmps://global-live.mux.com:443/app';
 const hlsUrl = (playbackId) =>
     `https://stream.mux.com/${playbackId}.m3u8`;
 
+// ── POST /api/livestreams/mock ───────────────────────────────────
+// No Mux needed — injects a real HLS test stream into the DB and
+// broadcasts stream_created to all connected clients for testing.
+router.post('/mock', async (req, res) => {
+    try {
+        const { userId, title } = req.body;
+        if (!userId) {
+            return res.status(400).json({ error: 'userId is required' });
+        }
+
+        // Public Big Buck Bunny HLS stream (Apple sample, loops forever)
+        const testHlsUrl =
+            'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8';
+
+        const streamTitle = title || '🎬 Mock Live Stream (Test)';
+
+        const result = await pool.query(
+            `INSERT INTO livestreams
+        (host_id, title, mux_stream_id, mux_playback_id, stream_key,
+         playback_url, status, started_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW())
+       RETURNING *`,
+            [userId, streamTitle, 'mock-' + Date.now(),
+             'mock-playback', 'mock-key', testHlsUrl]
+        );
+
+        const row = result.rows[0];
+
+        // Fetch host profile
+        const user = await pool.query(
+            'SELECT username, photo_url FROM users WHERE id = $1', [userId]
+        );
+        const username = user.rows[0]?.username || 'creator';
+        const photoUrl  = user.rows[0]?.photo_url || '';
+
+        const streamPayload = {
+            id: row.id,
+            title: streamTitle,
+            hostId: userId,
+            hostUsername: username,
+            hostPhotoUrl: photoUrl,
+            muxStreamId: row.mux_stream_id,
+            muxPlaybackId: 'mock-playback',
+            streamKey: 'mock-key',
+            rtmpUrl: RTMP_BASE_URL,
+            playbackUrl: testHlsUrl,
+            status: 'active',
+            viewerCount: 0,
+        };
+
+        // 📡 Broadcast to ALL connected sockets immediately
+        const io = req.app.get('io');
+        if (io) io.emit('stream_created', streamPayload);
+
+        res.status(201).json(streamPayload);
+    } catch (err) {
+        console.error('Mock stream error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ── POST /api/livestreams ────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
