@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   followers_count INT DEFAULT 0,
   following_count INT DEFAULT 0,
   posts_count INT DEFAULT 0,
+  is_banned BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -46,8 +47,25 @@ CREATE TABLE IF NOT EXISTS likes (
   UNIQUE(post_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS reports (
+  id TEXT PRIMARY KEY,
+  reporter_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  reporter_username TEXT DEFAULT '',
+  target_id TEXT NOT NULL,
+  target_type TEXT NOT NULL DEFAULT 'user',
+  reason TEXT NOT NULL DEFAULT '',
+  details TEXT DEFAULT '',
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  resolved_by TEXT
+);
+
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY,
+  is_group BOOLEAN DEFAULT false,
+  group_name TEXT DEFAULT '',
+  created_by TEXT DEFAULT '',
   last_message TEXT DEFAULT '',
   last_message_time TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()

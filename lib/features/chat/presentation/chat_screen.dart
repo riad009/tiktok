@@ -492,11 +492,61 @@ class _CreateGroupSheet extends StatefulWidget {
 class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   final _nameController = TextEditingController();
   final Set<String> _selectedUserIds = {};
+  List<UserModel> _users = [];
+  bool _loading = true;
+  bool _creating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  void _loadUsers() async {
+    final users = await ApiService.getUsers();
+    if (mounted) {
+      setState(() {
+        _users = users.where((u) => u.uid != widget.currentUid).toList();
+        _loading = false;
+      });
+    }
+  }
+
+  void _createGroup() async {
+    if (_selectedUserIds.isEmpty || _creating) return;
+    setState(() => _creating = true);
+
+    final groupName = _nameController.text.trim().isEmpty
+        ? 'New Group' : _nameController.text.trim();
+
+    final convo = await ApiService.createGroupConversation(
+      creatorId: widget.currentUid,
+      groupName: groupName,
+      memberIds: _selectedUserIds.toList(),
+    );
+
+    if (!mounted) return;
+
+    if (convo != null) {
+      Navigator.pop(context); // close sheet
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          conversationId: convo.id,
+          otherUserName: convo.groupName,
+          isGroupChat: true,
+          conversation: convo,
+        ),
+      ));
+    } else {
+      setState(() => _creating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to create group'), backgroundColor: AppColors.error),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final allUsers = MockData.users.where((u) => u.uid != widget.currentUid).toList();
-
     return Padding(
       padding: EdgeInsets.only(
         left: 24, right: 24, top: 24,
@@ -529,36 +579,38 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
           const SizedBox(height: 8),
           SizedBox(
             height: 180,
-            child: ListView.builder(
-              itemCount: allUsers.length,
-              itemBuilder: (_, i) {
-                final user = allUsers[i];
-                final selected = _selectedUserIds.contains(user.uid);
-                return CheckboxListTile(
-                  dense: true,
-                  value: selected,
-                  activeColor: AppColors.accent,
-                  title: Text(user.displayName, style: const TextStyle(fontSize: 14)),
-                  subtitle: Text('@${user.username}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  secondary: CircleAvatar(
-                    radius: 18,
-                    backgroundImage: user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
-                    child: user.photoUrl.isEmpty
-                        ? Text(user.displayName[0], style: const TextStyle(fontSize: 12))
-                        : null,
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : ListView.builder(
+                    itemCount: _users.length,
+                    itemBuilder: (_, i) {
+                      final user = _users[i];
+                      final selected = _selectedUserIds.contains(user.uid);
+                      return CheckboxListTile(
+                        dense: true,
+                        value: selected,
+                        activeColor: AppColors.accent,
+                        title: Text(user.displayName, style: const TextStyle(fontSize: 14)),
+                        subtitle: Text('@${user.username}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                        secondary: CircleAvatar(
+                          radius: 18,
+                          backgroundImage: user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
+                          child: user.photoUrl.isEmpty
+                              ? Text(user.displayName.isNotEmpty ? user.displayName[0] : '?', style: const TextStyle(fontSize: 12))
+                              : null,
+                        ),
+                        onChanged: (val) {
+                          setState(() {
+                            if (val == true) {
+                              _selectedUserIds.add(user.uid);
+                            } else {
+                              _selectedUserIds.remove(user.uid);
+                            }
+                          });
+                        },
+                      );
+                    },
                   ),
-                  onChanged: (val) {
-                    setState(() {
-                      if (val == true) {
-                        _selectedUserIds.add(user.uid);
-                      } else {
-                        _selectedUserIds.remove(user.uid);
-                      }
-                    });
-                  },
-                );
-              },
-            ),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -566,36 +618,27 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
             height: 48,
             child: Container(
               decoration: BoxDecoration(
-                gradient: _selectedUserIds.isNotEmpty ? AppColors.primaryGradient : null,
-                color: _selectedUserIds.isEmpty ? AppColors.darkCard : null,
+                gradient: _selectedUserIds.isNotEmpty && !_creating ? AppColors.primaryGradient : null,
+                color: _selectedUserIds.isEmpty || _creating ? AppColors.darkCard : null,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
-                  onTap: _selectedUserIds.isEmpty ? null : () {
-                    final groupName = _nameController.text.trim().isEmpty
-                        ? 'New Group' : _nameController.text.trim();
-                    // In production, would call chatRepository.createGroupConversation
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Group "$groupName" created with ${_selectedUserIds.length + 1} members!'),
-                        backgroundColor: AppColors.success,
-                      ),
-                    );
-                    Navigator.pop(context);
-                  },
+                  onTap: _selectedUserIds.isEmpty || _creating ? null : _createGroup,
                   child: Center(
-                    child: Text(
-                      _selectedUserIds.isEmpty
-                          ? 'Select members to continue'
-                          : 'Create Group (${_selectedUserIds.length + 1} members)',
-                      style: TextStyle(
-                        color: _selectedUserIds.isEmpty ? AppColors.textMuted : Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: _creating
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text(
+                            _selectedUserIds.isEmpty
+                                ? 'Select members to continue'
+                                : 'Create Group (${_selectedUserIds.length + 1} members)',
+                            style: TextStyle(
+                              color: _selectedUserIds.isEmpty ? AppColors.textMuted : Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -650,6 +693,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     ref.invalidate(messagesProvider(widget.conversationId));
     ref.invalidate(conversationsProvider);
+    if (widget.isGroupChat) {
+      ref.invalidate(groupConversationsProvider);
+    }
   }
 
   void _showReactionPicker(MessageModel message) {
@@ -665,7 +711,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('React to message', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 16)),
+            const Text('React to message', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16, fontFamily: 'Inter', letterSpacing: 0.5)),
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
@@ -986,7 +1032,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(widget.otherUserName,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 0.3),
                     overflow: TextOverflow.ellipsis),
                 Text(
                   widget.isGroupChat
@@ -1026,9 +1072,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   itemBuilder: (_, i) {
                     final msg = messages[i];
                     final isMe = msg.senderId == currentUid;
+                    final senderName = widget.isGroupChat && !isMe
+                        ? (widget.conversation?.participantNames[msg.senderId] ?? msg.senderId)
+                        : null;
                     return GestureDetector(
                       onLongPress: () => _showReactionPicker(msg),
-                      child: _ChatBubble(message: msg, isMe: isMe),
+                      child: _ChatBubble(message: msg, isMe: isMe, senderName: senderName),
                     );
                   },
                 );
@@ -1065,8 +1114,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: TextField(
                 controller: _msgController,
                 onSubmitted: (_) => _sendMessage(),
+                style: const TextStyle(fontFamily: 'Inter', letterSpacing: 0.2),
                 decoration: const InputDecoration(
                     hintText: 'Message...',
+                    hintStyle: TextStyle(fontFamily: 'Inter', letterSpacing: 0.3),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
               ),
@@ -1090,7 +1141,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 class _ChatBubble extends StatelessWidget {
   final MessageModel message;
   final bool isMe;
-  const _ChatBubble({required this.message, required this.isMe});
+  final String? senderName;
+  const _ChatBubble({required this.message, required this.isMe, this.senderName});
 
   @override
   Widget build(BuildContext context) {
@@ -1101,6 +1153,19 @@ class _ChatBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            if (senderName != null) ...[
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 4),
+                child: Text(
+                  senderName!,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+            ],
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
@@ -1146,7 +1211,7 @@ class _ChatBubble extends StatelessWidget {
                     const SizedBox(height: 6),
                   ],
                   if (message.text.isNotEmpty)
-                    Text(message.text, style: const TextStyle(fontSize: 15, height: 1.4)),
+                    Text(message.text, style: const TextStyle(fontSize: 15, height: 1.4, fontFamily: 'Inter', letterSpacing: 0.2)),
                   const SizedBox(height: 4),
                   Row(
                     mainAxisSize: MainAxisSize.min,

@@ -1,5 +1,8 @@
 import 'dart:math';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/music_model.dart';
 
@@ -17,10 +20,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   bool _isPlaying = false;
   double _currentPosition = 0;
   late AnimationController _rotationController;
+  String? _localCoverPath;
+  late List<String> _taggedUsers;
 
   @override
   void initState() {
     super.initState();
+    _taggedUsers = List<String>.from(widget.track.taggedUsers);
     _rotationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -55,6 +61,85 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     final mins = seconds ~/ 60;
     final secs = (seconds % 60).toInt();
     return '$mins:${secs.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _pickCover() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null && mounted) {
+      setState(() => _localCoverPath = picked.path);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cover updated! 🎨'), backgroundColor: AppColors.success),
+      );
+    }
+  }
+
+  void _showTagArtistDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkCard,
+        title: const Text('Tag Artist / User',
+            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: '@username',
+                hintStyle: const TextStyle(color: AppColors.textMuted),
+                filled: true,
+                fillColor: AppColors.darkSurface,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+                prefixIcon: Icon(Icons.alternate_email, color: AppColors.accent),
+              ),
+            ),
+            if (_taggedUsers.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _taggedUsers.map((u) => Chip(
+                  label: Text('@$u', style: TextStyle(fontSize: 12, color: AppColors.accent)),
+                  backgroundColor: AppColors.accent.withAlpha(30),
+                  deleteIcon: const Icon(Icons.close, size: 14),
+                  onDeleted: () {
+                    setState(() => _taggedUsers.remove(u));
+                    Navigator.pop(ctx);
+                    _showTagArtistDialog();
+                  },
+                )).toList(),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              final username = controller.text.trim().replaceAll('@', '');
+              if (username.isNotEmpty && !_taggedUsers.contains(username)) {
+                setState(() => _taggedUsers.add(username));
+              }
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text('Tagged @$username! 🏷️'),
+                    backgroundColor: AppColors.success),
+              );
+            },
+            child: const Text('Add Tag', style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -106,7 +191,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.network(
+                      _localCoverPath != null
+                          ? (kIsWeb
+                              ? Image.network(_localCoverPath!, fit: BoxFit.cover, width: 260, height: 260)
+                              : Image.file(File(_localCoverPath!), fit: BoxFit.cover, width: 260, height: 260))
+                          : Image.network(
                         track.coverUrl,
                         fit: BoxFit.cover,
                         width: 260,
@@ -150,11 +239,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             ),
 
             // Tagged users
-            if (track.taggedUsers.isNotEmpty) ...[
+            if (_taggedUsers.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(
                 spacing: 6,
-                children: track.taggedUsers.map((u) => Container(
+                children: _taggedUsers.map((u) => Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.accent.withValues(alpha: 0.15),
@@ -262,11 +351,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                     const SnackBar(content: Text('Select this track when creating a story! 🎵'), backgroundColor: AppColors.success),
                   );
                 }),
-                _ActionBtn(icon: Icons.upload_rounded, label: 'Upload Cover', onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Cover upload coming soon! 🎨'), backgroundColor: AppColors.secondary),
-                  );
-                }),
+                _ActionBtn(icon: Icons.upload_rounded, label: 'Upload Cover', onTap: _pickCover),
+                _ActionBtn(icon: Icons.person_add_alt_1_rounded, label: 'Tag Artist', onTap: _showTagArtistDialog),
                 _ActionBtn(icon: Icons.share_rounded, label: 'Share', onTap: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Shared! 🔗'), backgroundColor: AppColors.success),

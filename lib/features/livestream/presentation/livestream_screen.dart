@@ -989,6 +989,58 @@ class _LivestreamHostViewState extends ConsumerState<LivestreamHostView> {
     super.dispose();
   }
 
+  void _endStream() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('End Livestream?',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Are you sure you want to end your livestream?',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _isLive = false);
+              _showStreamSummary();
+            },
+            child: const Text('End Stream',
+                style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showStreamSummary() {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: AppColors.darkCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _StreamSummarySheet(
+        viewerCount: _viewerCount,
+        totalReactions: _totalReactions,
+        onDone: () {
+          Navigator.pop(ctx);
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2078,6 +2130,230 @@ class _StatTile extends StatelessWidget {
               label,
               style: TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Stream Summary + Auto-Clip Prompt ─────────────────────────────
+class _StreamSummarySheet extends StatefulWidget {
+  final int viewerCount;
+  final int totalReactions;
+  final VoidCallback onDone;
+
+  const _StreamSummarySheet({
+    required this.viewerCount,
+    required this.totalReactions,
+    required this.onDone,
+  });
+
+  @override
+  State<_StreamSummarySheet> createState() => _StreamSummarySheetState();
+}
+
+class _StreamSummarySheetState extends State<_StreamSummarySheet> {
+  bool _isClipping = false;
+  double _clipProgress = 0;
+
+  void _startAutoClip() {
+    setState(() => _isClipping = true);
+    // Simulate clip generation progress
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(milliseconds: 80));
+      if (!mounted) return false;
+      setState(() => _clipProgress += 0.025);
+      if (_clipProgress >= 1.0) {
+        // Done — show success then dismiss
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) widget.onDone();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: AppColors.darkBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Text('🎬 Stream Ended',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            const Text('Great stream! Here\'s your summary.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+            const SizedBox(height: 24),
+
+            // Stats row
+            Row(
+              children: [
+                _StatTile(
+                  icon: Icons.timer_outlined,
+                  label: 'Duration',
+                  value: '${(5 + widget.viewerCount).clamp(1, 60)}m',
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 12),
+                _StatTile(
+                  icon: Icons.visibility_outlined,
+                  label: 'Peak Viewers',
+                  value: '${widget.viewerCount}',
+                  color: AppColors.secondary,
+                ),
+                const SizedBox(width: 12),
+                _StatTile(
+                  icon: Icons.favorite_outline,
+                  label: 'Reactions',
+                  value: '${widget.totalReactions}',
+                  color: AppColors.liveRed,
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+
+            // Auto-clip section
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.auto_awesome, color: AppColors.primary, size: 32),
+                  const SizedBox(height: 10),
+                  const Text('Auto-Generate Clips?',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'We can automatically clip the best moments from your livestream and upload them to your feed.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+
+                  if (_isClipping) ...[
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: _clipProgress,
+                        backgroundColor: AppColors.darkBorder,
+                        valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                        minHeight: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _clipProgress >= 1.0
+                          ? '✅ Clips uploaded to your feed!'
+                          : 'Generating clips… ${(_clipProgress * 100).toInt()}%',
+                      style: TextStyle(
+                        color: _clipProgress >= 1.0 ? Colors.green : AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ] else ...[
+                    // Action buttons
+                    SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _startAutoClip,
+                            child: const Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Yes — Auto Clip & Upload',
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: widget.onDone,
+                      child: const Text('No thanks',
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.15)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 6),
+            Text(value,
+                style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: const TextStyle(
+                    color: AppColors.textMuted, fontSize: 11)),
           ],
         ),
       ),

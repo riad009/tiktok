@@ -9,6 +9,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/widgets/artistcase_logo.dart';
 import '../../../models/video_model.dart';
 import '../../../models/comment_model.dart';
+import '../../stories/presentation/create_story_screen.dart';
 
 /// Custom scroll behavior that enables mouse drag on web
 class _WebScrollBehavior extends MaterialScrollBehavior {
@@ -366,9 +367,22 @@ class _PostCardState extends ConsumerState<_PostCard>
                 ),
                 const SizedBox(height: 20),
 
-                // Views
+                // Share to Story
                 _ActionButton(
-                  icon: Icons.visibility_rounded,
+                  icon: Icons.auto_stories_rounded,
+                  label: 'Story',
+                  color: AppColors.accent,
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const CreateStoryScreen(),
+                    ));
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Swipes (renamed from Views)
+                _ActionButton(
+                  icon: Icons.swipe_rounded,
                   label: _formatCount(video.viewsCount),
                   onTap: () {},
                 ),

@@ -189,6 +189,35 @@ class ApiService {
     return null;
   }
 
+  static Future<List<ConversationModel>> getGroupConversations(String userId) async {
+    final res = await http.get(Uri.parse('$_baseUrl/conversations/$userId?group=true'));
+    if (res.statusCode == 200) {
+      final List list = jsonDecode(res.body);
+      return list.map((j) => _parseGroupConversation(j)).toList();
+    }
+    return [];
+  }
+
+  static Future<ConversationModel?> createGroupConversation({
+    required String creatorId,
+    required String groupName,
+    required List<String> memberIds,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/conversations/group'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'creatorId': creatorId,
+        'groupName': groupName,
+        'memberIds': memberIds,
+      }),
+    );
+    if (res.statusCode == 201) {
+      return _parseGroupConversation(jsonDecode(res.body));
+    }
+    return null;
+  }
+
   // ── Messages ─────────────────────────────────────────────────
   static Future<List<MessageModel>> getMessages(String conversationId) async {
     final res = await http.get(Uri.parse('$_baseUrl/messages/$conversationId'));
@@ -320,6 +349,24 @@ class ApiService {
           : null,
       participantNames: {currentUid: 'Me', otherId: otherName},
       participantPhotos: {currentUid: '', otherId: otherPhoto},
+      isGroupChat: false,
+    );
+  }
+
+  static ConversationModel _parseGroupConversation(Map<String, dynamic> j) {
+    return ConversationModel(
+      id: j['id'] ?? '',
+      participants: List<String>.from(j['participants'] ?? []),
+      lastMessage: j['lastMessage'] ?? '',
+      lastMessageTime: j['lastMessageTime'] != null
+          ? DateTime.tryParse(j['lastMessageTime'].toString())
+          : null,
+      participantNames: Map<String, String>.from(j['participantNames'] ?? {}),
+      participantPhotos: Map<String, String>.from(j['participantPhotos'] ?? {}),
+      isGroupChat: true,
+      groupName: j['groupName'] ?? 'Group',
+      createdBy: j['createdBy'] ?? '',
+      adminIds: [j['createdBy'] ?? ''],
     );
   }
 

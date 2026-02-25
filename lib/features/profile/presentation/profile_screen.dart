@@ -211,129 +211,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildPhotosTab() {
-    final photos = MockData.imagePosts
-        .where((v) => v.userId == _targetUid && v.imageUrl.isNotEmpty)
-        .toList();
-    // Also include videos that have images
-    final allPhotos = [
-      ...photos,
-      ...MockData.videos.where((v) => v.userId == _targetUid && v.imageUrl.isNotEmpty),
-    ];
-
-    if (allPhotos.isEmpty) {
-      return _buildEmptyTab(Icons.photo_library_outlined, 'No photos yet');
-    }
-    return _buildPostsGrid(allPhotos);
+    final videosAsync = ref.watch(userVideosProvider(_targetUid));
+    return videosAsync.when(
+      data: (videos) {
+        final photos = videos.where((v) => v.imageUrl.isNotEmpty).toList();
+        if (photos.isEmpty) {
+          return _buildEmptyTab(Icons.photo_library_outlined, 'No photos yet');
+        }
+        return _buildPostsGrid(photos);
+      },
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => Center(child: Text('Error: $e')),
+    );
   }
 
   Widget _buildLikedTab() {
-    final liked = MockData.likedPosts;
-    if (liked.isEmpty) {
-      return _buildEmptyTab(Icons.favorite_border, 'No liked posts');
-    }
-    return _buildPostsGrid(liked);
+    return _buildEmptyTab(Icons.favorite_border, 'Liked posts will appear here');
   }
 
   Widget _buildRepostsTab() {
-    final reposts = MockData.repostedPosts;
-    if (reposts.isEmpty) {
-      return _buildEmptyTab(Icons.repeat_rounded, 'No reposts yet');
-    }
-    return _buildPostsGrid(reposts);
+    return _buildEmptyTab(Icons.repeat_rounded, 'Reposts will appear here');
   }
 
   Widget _buildLivestreamsTab() {
-    final streams = MockData.livestreamsForUser(_targetUid);
-    // If no user-specific streams, show all replays
-    final displayStreams = streams.isNotEmpty ? streams : MockData.replays;
-
-    if (displayStreams.isEmpty) {
-      return _buildEmptyTab(Icons.live_tv_outlined, 'No livestreams yet');
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: displayStreams.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) {
-        final stream = displayStreams[i];
-        return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.darkCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.darkBorder),
-          ),
-          child: Row(
-            children: [
-              // Thumbnail
-              Container(
-                width: 80, height: 60,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: AppColors.darkBorder,
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        'https://picsum.photos/seed/live${stream.id}/160/120',
-                        fit: BoxFit.cover,
-                        width: 80, height: 60,
-                        errorBuilder: (_, __, ___) => const SizedBox(),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: stream.isLive ? AppColors.liveRed : Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        stream.isLive ? 'LIVE' : 'REPLAY',
-                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(stream.title,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.visibility, size: 13, color: AppColors.textMuted),
-                        const SizedBox(width: 4),
-                        Text('${_formatCount(stream.viewerCount)} viewers',
-                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                        const SizedBox(width: 10),
-                        Icon(Icons.favorite, size: 13, color: AppColors.textMuted),
-                        const SizedBox(width: 4),
-                        Text(_formatCount(stream.totalReactions),
-                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (!stream.isLive)
-                IconButton(
-                  icon: const Icon(Icons.play_circle_outline, color: AppColors.primary),
-                  onPressed: () {},
-                ),
-            ],
-          ),
-        );
-      },
-    );
+    return _buildEmptyTab(Icons.live_tv_outlined, 'Past livestreams will appear here');
   }
 
   Widget _buildEmptyTab(IconData icon, String text) {

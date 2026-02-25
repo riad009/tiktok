@@ -13,87 +13,87 @@ const app = express();
 const httpServer = http.createServer(app);
 
 // ── CORS ─────────────────────────────────────────────────────────
-app.use(cors({ origin: '*', methods: ['GET','POST','PUT','DELETE','PATCH'] }));
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] }));
 app.use(express.json({ limit: '50mb' }));
 
 // ── Redis (viewer counts & pub/sub) ──────────────────────────────
 const redis = process.env.REDIS_URL
-  ? new Redis(process.env.REDIS_URL)
-  : new Redis({ host: '127.0.0.1', port: 6379, lazyConnect: true });
+    ? new Redis(process.env.REDIS_URL)
+    : new Redis({ host: '127.0.0.1', port: 6379, lazyConnect: true });
 redis.on('error', (e) => console.warn('Redis unavailable (non-fatal):', e.message));
 
 // ── Socket.io ────────────────────────────────────────────────────
 const io = new SocketServer(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
-  transports: ['websocket', 'polling'],
+    cors: { origin: '*', methods: ['GET', 'POST'] },
+    transports: ['websocket', 'polling'],
 });
 app.set('io', io); // expose to routes via req.app.get('io')
 
 io.on('connection', (socket) => {
-  // join a stream room
-  socket.on('join_stream', async ({ streamId, username }) => {
-    socket.join(streamId);
-    socket.data.streamId = streamId;
-    socket.data.username = username;
-    // Increment viewer count in Redis
-    const count = await redis.incr(`viewers:${streamId}`).catch(() => 0);
-    io.to(streamId).emit('viewer_count', count);
-    // Also persist to DB (non-blocking)
-    pool.query(
-      'UPDATE livestreams SET viewer_count = $1, peak_viewers = GREATEST(peak_viewers, $1) WHERE id = $2',
-      [count, streamId]
-    ).catch(() => {});
-  });
-
-  socket.on('leave_stream', async () => {
-    const { streamId } = socket.data;
-    if (!streamId) return;
-    const count = Math.max(0, await redis.decr(`viewers:${streamId}`).catch(() => 0));
-    io.to(streamId).emit('viewer_count', count);
-    pool.query(
-      'UPDATE livestreams SET viewer_count = $1 WHERE id = $2',
-      [count, streamId]
-    ).catch(() => {});
-    socket.leave(streamId);
-  });
-
-  socket.on('disconnect', async () => {
-    const { streamId, username } = socket.data;
-    if (!streamId) return;
-    const count = Math.max(0, await redis.decr(`viewers:${streamId}`).catch(() => 0));
-    io.to(streamId).emit('viewer_count', count);
-    pool.query(
-      'UPDATE livestreams SET viewer_count = $1 WHERE id = $2',
-      [count, streamId]
-    ).catch(() => {});
-  });
-
-  // Live chat message broadcast
-  socket.on('chat_message', ({ streamId, username, text, photoUrl }) => {
-    io.to(streamId).emit('chat_message', {
-      id: uuid(),
-      username,
-      text,
-      photoUrl: photoUrl || '',
-      timestamp: new Date().toISOString(),
+    // join a stream room
+    socket.on('join_stream', async ({ streamId, username }) => {
+        socket.join(streamId);
+        socket.data.streamId = streamId;
+        socket.data.username = username;
+        // Increment viewer count in Redis
+        const count = await redis.incr(`viewers:${streamId}`).catch(() => 0);
+        io.to(streamId).emit('viewer_count', count);
+        // Also persist to DB (non-blocking)
+        pool.query(
+            'UPDATE livestreams SET viewer_count = $1, peak_viewers = GREATEST(peak_viewers, $1) WHERE id = $2',
+            [count, streamId]
+        ).catch(() => { });
     });
-  });
 
-  // Emoji reaction
-  socket.on('reaction', ({ streamId, emoji, username }) => {
-    io.to(streamId).emit('reaction', { emoji, username });
-  });
+    socket.on('leave_stream', async () => {
+        const { streamId } = socket.data;
+        if (!streamId) return;
+        const count = Math.max(0, await redis.decr(`viewers:${streamId}`).catch(() => 0));
+        io.to(streamId).emit('viewer_count', count);
+        pool.query(
+            'UPDATE livestreams SET viewer_count = $1 WHERE id = $2',
+            [count, streamId]
+        ).catch(() => { });
+        socket.leave(streamId);
+    });
+
+    socket.on('disconnect', async () => {
+        const { streamId, username } = socket.data;
+        if (!streamId) return;
+        const count = Math.max(0, await redis.decr(`viewers:${streamId}`).catch(() => 0));
+        io.to(streamId).emit('viewer_count', count);
+        pool.query(
+            'UPDATE livestreams SET viewer_count = $1 WHERE id = $2',
+            [count, streamId]
+        ).catch(() => { });
+    });
+
+    // Live chat message broadcast
+    socket.on('chat_message', ({ streamId, username, text, photoUrl }) => {
+        io.to(streamId).emit('chat_message', {
+            id: uuid(),
+            username,
+            text,
+            photoUrl: photoUrl || '',
+            timestamp: new Date().toISOString(),
+        });
+    });
+
+    // Emoji reaction
+    socket.on('reaction', ({ streamId, emoji, username }) => {
+        io.to(streamId).emit('reaction', { emoji, username });
+    });
 });
 
 // ── Livestream routes ─────────────────────────────────────────────
 // Webhook needs raw body, must come before json middleware for that path
 app.post('/api/mux-webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
-  req.body = req.body.toString();
-  next();
+    req.body = req.body.toString();
+    next();
 }, (req, res) => {
-  const router = require('./routes/livestream');
-  // Forward to webhook handler in router
-  require('./routes/livestream').handle?.(req, res);
+    const router = require('./routes/livestream');
+    // Forward to webhook handler in router
+    require('./routes/livestream').handle?.(req, res);
 });
 app.use('/api/livestreams', livestreamRouter);
 
@@ -360,6 +360,34 @@ app.get('/api/likes/check/:postId/:userId', async (req, res) => {
 app.get('/api/conversations/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
+        const isGroup = req.query.group === 'true';
+
+        if (isGroup) {
+            // Return group conversations
+            const result = await pool.query(
+                `SELECT c.*
+           FROM conversations c
+           JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = $1
+           WHERE c.is_group = true
+           ORDER BY c.last_message_time DESC`,
+                [userId]
+            );
+            // For each group, fetch participants
+            const groups = [];
+            for (const row of result.rows) {
+                const pResult = await pool.query(
+                    `SELECT u.id, u.username, u.display_name, u.photo_url
+               FROM conversation_participants cp
+               JOIN users u ON cp.user_id = u.id
+               WHERE cp.conversation_id = $1`,
+                    [row.id]
+                );
+                groups.push(mapGroupConversation(row, pResult.rows));
+            }
+            return res.json(groups);
+        }
+
+        // Return direct (1:1) conversations
         const result = await pool.query(
             `SELECT c.*, cp2.user_id AS other_user_id,
               u.username AS other_username, u.display_name AS other_display_name,
@@ -368,6 +396,7 @@ app.get('/api/conversations/:userId', async (req, res) => {
        JOIN conversation_participants cp1 ON c.id = cp1.conversation_id AND cp1.user_id = $1
        JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.user_id != $1
        JOIN users u ON cp2.user_id = u.id
+       WHERE (c.is_group = false OR c.is_group IS NULL)
        ORDER BY c.last_message_time DESC`,
             [userId]
         );
@@ -378,15 +407,18 @@ app.get('/api/conversations/:userId', async (req, res) => {
     }
 });
 
+// Create 1:1 conversation
 app.post('/api/conversations', async (req, res) => {
     try {
         const { userId1, userId2 } = req.body;
         if (!userId1 || !userId2) return res.status(400).json({ error: 'userId1 and userId2 are required' });
 
+        // Only check non-group conversations
         const existing = await pool.query(
             `SELECT cp1.conversation_id FROM conversation_participants cp1
        JOIN conversation_participants cp2 ON cp1.conversation_id = cp2.conversation_id
-       WHERE cp1.user_id = $1 AND cp2.user_id = $2`,
+       JOIN conversations c ON c.id = cp1.conversation_id
+       WHERE cp1.user_id = $1 AND cp2.user_id = $2 AND (c.is_group = false OR c.is_group IS NULL)`,
             [userId1, userId2]
         );
 
@@ -407,7 +439,7 @@ app.post('/api/conversations', async (req, res) => {
         }
 
         const convoId = uuid();
-        await pool.query('INSERT INTO conversations (id) VALUES ($1)', [convoId]);
+        await pool.query('INSERT INTO conversations (id, is_group) VALUES ($1, false)', [convoId]);
         await pool.query(
             'INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1, $2), ($1, $3)',
             [convoId, userId1, userId2]
@@ -427,6 +459,49 @@ app.post('/api/conversations', async (req, res) => {
         res.status(201).json(mapConversation(conv.rows[0]));
     } catch (err) {
         console.error('Create conversation error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Create group conversation
+app.post('/api/conversations/group', async (req, res) => {
+    try {
+        const { creatorId, groupName, memberIds } = req.body;
+        if (!creatorId || !memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+            return res.status(400).json({ error: 'creatorId and memberIds[] are required' });
+        }
+
+        const convoId = uuid();
+        const name = (groupName || '').trim() || 'New Group';
+
+        await pool.query(
+            `INSERT INTO conversations (id, is_group, group_name, created_by)
+       VALUES ($1, true, $2, $3)`,
+            [convoId, name, creatorId]
+        );
+
+        // Add creator + all selected members
+        const allMembers = [creatorId, ...memberIds.filter(id => id !== creatorId)];
+        for (const memberId of allMembers) {
+            await pool.query(
+                'INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1, $2)',
+                [convoId, memberId]
+            );
+        }
+
+        // Fetch the group with participants
+        const convRow = await pool.query('SELECT * FROM conversations WHERE id = $1', [convoId]);
+        const pResult = await pool.query(
+            `SELECT u.id, u.username, u.display_name, u.photo_url
+       FROM conversation_participants cp
+       JOIN users u ON cp.user_id = u.id
+       WHERE cp.conversation_id = $1`,
+            [convoId]
+        );
+
+        res.status(201).json(mapGroupConversation(convRow.rows[0], pResult.rows));
+    } catch (err) {
+        console.error('Create group error:', err.message);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -529,12 +604,34 @@ function mapComment(row) {
 function mapConversation(row) {
     return {
         id: row.id,
+        isGroup: false,
         lastMessage: row.last_message || '',
         lastMessageTime: row.last_message_time,
         otherUserId: row.other_user_id,
         otherUsername: row.other_username,
         otherDisplayName: row.other_display_name,
         otherPhotoUrl: row.other_photo_url || '',
+    };
+}
+
+function mapGroupConversation(row, participantRows) {
+    const participants = participantRows.map(p => p.id);
+    const participantNames = {};
+    const participantPhotos = {};
+    for (const p of participantRows) {
+        participantNames[p.id] = p.display_name || p.username;
+        participantPhotos[p.id] = p.photo_url || '';
+    }
+    return {
+        id: row.id,
+        isGroup: true,
+        groupName: row.group_name || 'Group',
+        createdBy: row.created_by || '',
+        lastMessage: row.last_message || '',
+        lastMessageTime: row.last_message_time,
+        participants,
+        participantNames,
+        participantPhotos,
     };
 }
 
@@ -551,10 +648,24 @@ function mapMessage(row) {
 }
 
 // ─── START ───────────────────────────────────────────────────────
+// ── Auto-migrate group columns ──────────────────────────────────
+async function autoMigrate() {
+    try {
+        await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_group BOOLEAN DEFAULT false`);
+        await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''`);
+        await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS created_by TEXT DEFAULT ''`);
+        console.log('✅ Group columns migrated');
+    } catch (e) {
+        console.warn('Migration note:', e.message);
+    }
+}
+
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-    console.log(`🚀 Artistcase API  →  http://localhost:${PORT}`);
-    console.log(`🔌 Socket.io ready →  ws://localhost:${PORT}`);
+autoMigrate().then(() => {
+    httpServer.listen(PORT, () => {
+        console.log(`🚀 Artistcase API  →  http://localhost:${PORT}`);
+        console.log(`🔌 Socket.io ready →  ws://localhost:${PORT}`);
+    });
 });
 
 // Export io for use in routes if needed

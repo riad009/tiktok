@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
+import '../../../core/data/mock_data.dart';
+import '../../../models/music_model.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../music/presentation/music_player_screen.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -21,7 +24,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -85,6 +88,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                   Tab(text: 'Users'),
                   Tab(text: 'Hashtags'),
                   Tab(text: 'Posts'),
+                  Tab(text: 'Music'),
+                  Tab(text: 'Mentions'),
                 ],
               ),
             ],
@@ -97,6 +102,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
           _buildUsersTab(),
           _buildHashtagsTab(),
           _buildPostsTab(),
+          _buildMusicTab(),
+          _buildMentionsTab(),
         ],
       ),
     );
@@ -281,5 +288,117 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
     if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
     return '$count';
+  }
+
+  Widget _buildMusicTab() {
+    final tracks = MockData.trendingTracks;
+    final filtered = _isSearching
+        ? tracks.where((t) =>
+            t.title.toLowerCase().contains(_query.toLowerCase()) ||
+            t.artistName.toLowerCase().contains(_query.toLowerCase())).toList()
+        : tracks;
+
+    if (filtered.isEmpty) return _buildEmptySearch('No music found');
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: filtered.length,
+      itemBuilder: (_, i) {
+        final track = filtered[i];
+        return ListTile(
+          leading: Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.secondary.withAlpha(40),
+              borderRadius: BorderRadius.circular(12),
+              image: track.coverUrl.isNotEmpty
+                  ? DecorationImage(
+                      image: NetworkImage(track.coverUrl),
+                      fit: BoxFit.cover)
+                  : null,
+            ),
+            child: track.coverUrl.isEmpty
+                ? const Icon(Icons.music_note_rounded,
+                    color: AppColors.secondary)
+                : null,
+          ),
+          title: Text(track.title,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(track.artistName,
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13)),
+          trailing: Text('${_formatCount(track.usageCount)} uses',
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 12)),
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => MusicPlayerScreen(track: track)));
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildMentionsTab() {
+    final feedAsync = ref.watch(feedVideosProvider);
+
+    return feedAsync.when(
+      data: (videos) {
+        final mentionVideos = _isSearching
+            ? videos
+                .where((v) =>
+                    v.caption.toLowerCase().contains('@${_query.toLowerCase()}'))
+                .toList()
+            : videos.where((v) => v.caption.contains('@')).toList();
+
+        if (mentionVideos.isEmpty) return _buildEmptySearch('No mentions found');
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: mentionVideos.length,
+          itemBuilder: (_, i) {
+            final video = mentionVideos[i];
+            return ListTile(
+              leading: CircleAvatar(
+                backgroundColor: AppColors.accent.withAlpha(40),
+                backgroundImage: video.userPhotoUrl.isNotEmpty
+                    ? NetworkImage(video.userPhotoUrl)
+                    : null,
+                child: video.userPhotoUrl.isEmpty
+                    ? Text(
+                        video.username.isNotEmpty
+                            ? video.username[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(fontWeight: FontWeight.w700))
+                    : null,
+              ),
+              title: Text('@${video.username}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                video.caption,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 13),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.swipe_rounded,
+                      size: 14, color: AppColors.textMuted),
+                  const SizedBox(width: 4),
+                  Text(_formatCount(video.viewsCount),
+                      style: const TextStyle(
+                          color: AppColors.textMuted, fontSize: 12)),
+                ],
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => Center(child: Text('Error: $e')),
+    );
   }
 }

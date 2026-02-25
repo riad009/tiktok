@@ -192,13 +192,11 @@ final allClipsProvider = FutureProvider<List<ClipModel>>((ref) async {
   return MockData.livestreamClips;
 });
 
-// ── Group Conversations (mock) ──────────────────────────────────
+// ── Group Conversations (from PostgreSQL API) ──────────────────
 final groupConversationsProvider = FutureProvider<List<ConversationModel>>((ref) async {
   final uid = ref.watch(currentUidProvider);
   if (uid == null) return [];
-  return MockData.groupConversations
-      .where((g) => g.participants.contains(uid))
-      .toList();
+  return ApiService.getGroupConversations(uid);
 });
 
 // ── Blocked Users ───────────────────────────────────────────────
