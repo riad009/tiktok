@@ -1,3 +1,4 @@
+require('dotenv').config(); // MUST be first — env vars needed by Mux client in routes
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
@@ -7,7 +8,6 @@ const { Server: SocketServer } = require('socket.io');
 const Redis = require('ioredis');
 const pool = require('./db');
 const livestreamRouter = require('./routes/livestream');
-require('dotenv').config();
 
 const app = express();
 const httpServer = http.createServer(app);
