@@ -1,0 +1,24 @@
+{
+    "name": "tiktok",
+    "version": 2,
+    "builds": [
+        {
+            "src": "server/index.js",
+            "use": "@vercel/node"
+        },
+        {
+            "src": "build/web/**",
+            "use": "@vercel/static"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/(.*)",
+            "dest": "/server/index.js"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/build/web/$1"
+        }
+    ]
+}
