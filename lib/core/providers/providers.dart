@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/api_service.dart';
+import '../services/auth_persistence.dart';
 import '../services/user_repository.dart';
 import '../services/video_repository.dart';
 import '../services/story_repository.dart';
@@ -49,7 +50,21 @@ final currentUidProvider = Provider<String?>((ref) {
   return ref.watch(authUserProvider)?.uid;
 });
 
-// ── Is Admin ─────────────────────────────────────────────────────
+// ── Session restore (runs once at startup) ────────────────────────
+/// Reads SharedPreferences/localStorage and restores the saved JWT + user.
+/// AuthGate waits on this before deciding which screen to show.
+final sessionProvider = FutureProvider<UserModel?>((ref) async {
+  try {
+    final saved = await AuthPersistence.restore();
+    if (saved != null) {
+      ApiService.setToken(saved.token);
+      // Update the authUserProvider with the restored user
+      ref.read(authUserProvider.notifier).state = saved.user;
+      return saved.user;
+    }
+  } catch (_) {}
+  return null;
+});
 final isAdminProvider = Provider<bool>((ref) {
   final user = ref.watch(authUserProvider);
   return user?.isAdmin ?? false;

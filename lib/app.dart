@@ -26,18 +26,34 @@ class ArtistcaseApp extends StatelessWidget {
   }
 }
 
-/// Gate: checks mock login state and shows Login or MainShell
+/// Gate: awaits session restore from SharedPreferences, then routes
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final loggedIn = ref.watch(mockLoggedInProvider);
+    // Watch the session restore future — this reads SharedPreferences once
+    final session = ref.watch(sessionProvider);
 
-    if (loggedIn) {
-      return const MainShell();
-    }
-    return const LoginScreen();
+    return session.when(
+      // Brief splash while localStorage is read (usually <100ms on web)
+      loading: () => const Scaffold(
+        backgroundColor: Color(0xFF0a0a0a),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF2D55)),
+        ),
+      ),
+      // If restore fails, still check the in-memory state
+      error: (_, __) {
+        final loggedIn = ref.watch(mockLoggedInProvider);
+        return loggedIn ? const MainShell() : const LoginScreen();
+      },
+      // Session resolved — route based on auth state
+      data: (_) {
+        final loggedIn = ref.watch(mockLoggedInProvider);
+        return loggedIn ? const MainShell() : const LoginScreen();
+      },
+    );
   }
 }
 

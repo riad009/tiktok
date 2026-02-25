@@ -13,7 +13,18 @@ class ApiService {
       ? '/api'
       : 'http://localhost:3001/api';
 
-  // ── Auth ─────────────────────────────────────────────────────
+  // ── JWT token ─────────────────────────────────────────────────
+  static String? _token;
+  static String? get token => _token;
+  static void setToken(String? t) => _token = t;
+  static void clearToken() => _token = null;
+
+  static Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
+
+
   static Future<UserModel?> signup({
     required String username,
     required String email,
@@ -31,7 +42,9 @@ class ApiService {
       }),
     );
     if (res.statusCode == 201) {
-      return _parseUser(jsonDecode(res.body));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      _token = j['token'] as String?;  // store JWT
+      return _parseUser(j);
     }
     throw Exception(jsonDecode(res.body)['error'] ?? 'Signup failed');
   }
@@ -46,7 +59,9 @@ class ApiService {
       body: jsonEncode({'email': email, 'password': password}),
     );
     if (res.statusCode == 200) {
-      return _parseUser(jsonDecode(res.body));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      _token = j['token'] as String?;  // store JWT
+      return _parseUser(j);
     }
     throw Exception(jsonDecode(res.body)['error'] ?? 'Login failed');
   }
