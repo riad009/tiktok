@@ -1,8 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
 import '../../models/livestream_model.dart';
 import '../../models/clip_model.dart';
 
+/// Thin wrapper — all livestream operations now go through
+/// the Express/Mux backend via ApiService.
+/// Firebase Firestore is no longer used for livestreams.
 class LivestreamRepository {
   final _firestore = FirebaseFirestore.instance;
   final _uuid = const Uuid();

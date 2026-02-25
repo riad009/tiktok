@@ -1,4 +1,4 @@
-# Miscellaneous
+# ── Miscellaneous ─────────────────────────────────────────────────
 *.class
 *.log
 *.pyc
@@ -12,35 +12,64 @@
 .swiftpm/
 migrate_working_dir/
 
-# IntelliJ related
+# ── IDE ───────────────────────────────────────────────────────────
 *.iml
 *.ipr
 *.iws
 .idea/
+.vscode/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
+# ── Flutter/Dart/Pub ──────────────────────────────────────────────
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
 /build/
 /coverage/
 
-# Symbolication related
-app.*.symbols
+# Flutter SDK (never commit the SDK itself)
+flutter/
+flutter.tar.xz
+flutter.tar.gz
+flutter.zip
 
-# Obfuscation related
+# Symbolication / Obfuscation
+app.*.symbols
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# ── Android build artifacts ───────────────────────────────────────
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ── Node.js / Server ──────────────────────────────────────────────
+node_modules/
+server/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ── Environment / Secrets (NEVER commit these) ────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+
+# ── Vercel ────────────────────────────────────────────────────────
 .vercel
+
+# ── macOS ─────────────────────────────────────────────────────────
+__MACOSX/
+*.DS_Store
+
+# ── Editor backups ────────────────────────────────────────────────
+*.bak
+*.orig
+*.tmp

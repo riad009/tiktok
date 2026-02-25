@@ -1,12 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class LiveChatMessage {
   final String id;
   final String senderId;
   final String username;
   final String userPhotoUrl;
   final String text;
-  final String? reaction; // '❤️','🔥','👏','😂','😮','💎'
+  final String? reaction;
   final DateTime timestamp;
 
   LiveChatMessage({
@@ -18,29 +16,6 @@ class LiveChatMessage {
     this.reaction,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
-
-  factory LiveChatMessage.fromMap(Map<String, dynamic> map, String docId) {
-    return LiveChatMessage(
-      id: docId,
-      senderId: map['senderId'] ?? '',
-      username: map['username'] ?? '',
-      userPhotoUrl: map['userPhotoUrl'] ?? '',
-      text: map['text'] ?? '',
-      reaction: map['reaction'],
-      timestamp: (map['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'senderId': senderId,
-      'username': username,
-      'userPhotoUrl': userPhotoUrl,
-      'text': text,
-      'reaction': reaction,
-      'timestamp': Timestamp.fromDate(timestamp),
-    };
-  }
 }
 
 class LivestreamModel {
@@ -50,7 +25,13 @@ class LivestreamModel {
   final String hostPhotoUrl;
   final String title;
   final int viewerCount;
-  final bool isLive;
+  final int peakViewers;
+  final int totalReactions;
+
+  /// 'idle' | 'active' | 'ended'
+  final String status;
+  bool get isLive => status == 'active';
+
   final DateTime startedAt;
   final DateTime? endedAt;
   final String replayUrl;
@@ -67,7 +48,9 @@ class LivestreamModel {
     this.hostPhotoUrl = '',
     required this.title,
     this.viewerCount = 0,
-    this.isLive = true,
+    this.peakViewers = 0,
+    this.totalReactions = 0,
+    this.status = 'idle',
     DateTime? startedAt,
     this.endedAt,
     this.replayUrl = '',
@@ -118,31 +101,47 @@ class LivestreamModel {
   }
 
   LivestreamModel copyWith({
+    String? id,
+    String? hostId,
+    String? hostUsername,
+    String? hostPhotoUrl,
+    String? title,
     int? viewerCount,
-    bool? isLive,
-    DateTime? endedAt,
-    String? replayUrl,
-    int? totalReactions,
     int? peakViewers,
     List<String>? notifiedFollowers,
     List<String>? clipIds,
   }) {
     return LivestreamModel(
-      id: id,
-      hostId: hostId,
-      hostUsername: hostUsername,
-      hostPhotoUrl: hostPhotoUrl,
-      title: title,
+      id: id ?? this.id,
+      hostId: hostId ?? this.hostId,
+      hostUsername: hostUsername ?? this.hostUsername,
+      hostPhotoUrl: hostPhotoUrl ?? this.hostPhotoUrl,
+      title: title ?? this.title,
       viewerCount: viewerCount ?? this.viewerCount,
-      isLive: isLive ?? this.isLive,
-      startedAt: startedAt,
-      endedAt: endedAt ?? this.endedAt,
-      replayUrl: replayUrl ?? this.replayUrl,
-      viewerIds: viewerIds,
-      totalReactions: totalReactions ?? this.totalReactions,
       peakViewers: peakViewers ?? this.peakViewers,
       notifiedFollowers: notifiedFollowers ?? this.notifiedFollowers,
       clipIds: clipIds ?? this.clipIds,
     );
   }
+
+  factory LivestreamModel.fromJson(Map<String, dynamic> j) => LivestreamModel(
+        id: j['id'] ?? '',
+        hostId: j['hostId'] ?? '',
+        hostUsername: j['hostUsername'] ?? '',
+        hostPhotoUrl: j['hostPhotoUrl'] ?? '',
+        title: j['title'] ?? 'Live',
+        viewerCount: j['viewerCount'] ?? 0,
+        peakViewers: j['peakViewers'] ?? 0,
+        totalReactions: j['totalReactions'] ?? 0,
+        status: j['status'] ?? 'idle',
+        startedAt: DateTime.tryParse(j['startedAt']?.toString() ?? '') ??
+            DateTime.now(),
+        endedAt: j['endedAt'] != null
+            ? DateTime.tryParse(j['endedAt'].toString())
+            : null,
+        playbackUrl: j['playbackUrl'] ?? '',
+        muxStreamId: j['muxStreamId'] ?? '',
+        muxPlaybackId: j['muxPlaybackId'] ?? '',
+        streamKey: j['streamKey'] ?? '',
+      );
 }

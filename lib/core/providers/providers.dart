@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/api_service.dart';
+import '../services/auth_persistence.dart';
 import '../services/user_repository.dart';
 import '../services/video_repository.dart';
 import '../services/story_repository.dart';
@@ -50,7 +51,21 @@ final currentUidProvider = Provider<String?>((ref) {
   return ref.watch(authUserProvider)?.uid;
 });
 
-// ── Is Admin ─────────────────────────────────────────────────────
+// ── Session restore (runs once at startup) ────────────────────────
+/// Reads SharedPreferences/localStorage and restores the saved JWT + user.
+/// AuthGate waits on this before deciding which screen to show.
+final sessionProvider = FutureProvider<UserModel?>((ref) async {
+  try {
+    final saved = await AuthPersistence.restore();
+    if (saved != null) {
+      ApiService.setToken(saved.token);
+      // Update the authUserProvider with the restored user
+      ref.read(authUserProvider.notifier).state = saved.user;
+      return saved.user;
+    }
+  } catch (_) {}
+  return null;
+});
 final isAdminProvider = Provider<bool>((ref) {
   final user = ref.watch(authUserProvider);
   return user?.isAdmin ?? false;
@@ -116,9 +131,29 @@ final trendingHashtagsProvider = FutureProvider<Map<String, int>>((ref) async {
   return MockData.trendingHashtags;
 });
 
-// ── Livestreams (mock) ──────────────────────────────────────────
-final activeLivestreamsProvider = StreamProvider<List<LivestreamModel>>((ref) {
-  return Stream.value(MockData.activeLivestreams);
+// ── Livestreams ──────────────────────────────────────────────────
+final activeLivestreamsProvider = FutureProvider<List<LivestreamModel>>((ref) async {
+  try {
+    final data = await ApiService.getLivestreams();
+    if (data.isNotEmpty) {
+      return data.map((j) => LivestreamModel(
+        id: j['id'] ?? '',
+        hostId: j['hostId'] ?? '',
+        hostUsername: j['hostUsername'] ?? '',
+        hostPhotoUrl: j['hostPhotoUrl'] ?? '',
+        title: j['title'] ?? 'Live',
+        viewerCount: j['viewerCount'] ?? 0,
+        peakViewers: j['peakViewers'] ?? 0,
+        status: j['status'] ?? 'active',
+        startedAt: DateTime.tryParse(j['startedAt']?.toString() ?? '') ?? DateTime.now(),
+        playbackUrl: j['playbackUrl'] ?? '',
+        muxStreamId: j['muxStreamId'] ?? '',
+        muxPlaybackId: j['muxPlaybackId'] ?? '',
+        streamKey: j['streamKey'] ?? '',
+      )).toList();
+    }
+  } catch (_) {}
+  return MockData.activeLivestreams;
 });
 
 final livestreamProvider = StreamProvider.family<LivestreamModel?, String>((ref, id) {

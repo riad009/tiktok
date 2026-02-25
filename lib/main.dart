@@ -23,7 +23,6 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // System UI styling
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,

@@ -34,7 +34,9 @@ class ApiService {
       }),
     );
     if (res.statusCode == 201) {
-      return _parseUser(jsonDecode(res.body));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      _token = j['token'] as String?;  // store JWT
+      return _parseUser(j);
     }
     throw Exception(jsonDecode(res.body)['error'] ?? 'Signup failed');
   }
@@ -49,7 +51,9 @@ class ApiService {
       body: jsonEncode({'email': email, 'password': password}),
     );
     if (res.statusCode == 200) {
-      return _parseUser(jsonDecode(res.body));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      _token = j['token'] as String?;  // store JWT
+      return _parseUser(j);
     }
     throw Exception(jsonDecode(res.body)['error'] ?? 'Login failed');
   }
@@ -215,7 +219,49 @@ class ApiService {
     return null;
   }
 
+  // ── Livestreams (Mux) ────────────────────────────────────────
+  /// Creates a Mux live stream. Returns {streamKey, rtmpUrl, streamId, playbackId}
+  static Future<Map<String, dynamic>?> createStream({
+    required String userId,
+    required String title,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/livestreams'),
+        headers: _headers,
+        body: jsonEncode({'userId': userId, 'title': title}),
+      );
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Gets all active live streams from the DB.
+  static Future<List<Map<String, dynamic>>> getLivestreams() async {
+    try {
+      final res = await http.get(Uri.parse('$_baseUrl/livestreams'));
+      if (res.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(jsonDecode(res.body));
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Gets replay (VOD) assets for a user.
+  static Future<List<Map<String, dynamic>>> getUserReplays(String userId) async {
+    try {
+      final res = await http.get(Uri.parse('$_baseUrl/livestreams/replays/$userId'));
+      if (res.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(jsonDecode(res.body));
+      }
+    } catch (_) {}
+    return [];
+  }
+
   // ── Parsers ──────────────────────────────────────────────────
+
   static UserModel _parseUser(Map<String, dynamic> j) {
     return UserModel(
       uid: j['uid'] ?? '',

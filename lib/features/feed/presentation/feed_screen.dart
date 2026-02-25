@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
@@ -68,26 +69,59 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final feedAsync = ref.watch(feedVideosProvider);
 
     return Scaffold(
+      backgroundColor: Colors.black,
+      extendBody: true,
       extendBodyBehindAppBar: true,
+      // Transparent overlaid app bar
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: ShaderMask(
-          shaderCallback: (bounds) =>
-              AppColors.primaryGradient.createShader(bounds),
-          child: const Text('Artistcase',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white)),
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xCC000000), Colors.transparent],
+            ),
+          ),
         ),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton(
+              onPressed: () {},
+              style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+              child: const Text('Following',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 4),
+            ShaderMask(
+              shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
+              child: const Text('For You',
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white)),
+            ),
+          ],
+        ),
+        centerTitle: true,
       ),
       body: feedAsync.when(
         data: (videos) {
           if (videos.isEmpty) {
             return const Center(
-              child: Text('No posts yet. Be the first to post!',
-                  style: TextStyle(color: AppColors.textSecondary)),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.video_library_outlined,
+                      size: 64, color: AppColors.textMuted),
+                  SizedBox(height: 16),
+                  Text('No posts yet. Be the first to post!',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 16)),
+                ],
+              ),
             );
           }
           return Listener(
@@ -118,9 +152,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, size: 48, color: AppColors.textMuted),
+              const Icon(Icons.error_outline,
+                  size: 48, color: AppColors.textMuted),
               const SizedBox(height: 12),
-              Text('Error loading feed\n$e',
+              Text('Error loading feed',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 16),
@@ -137,24 +172,56 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 }
 
+// Makes mouse wheel / trackpad also trigger page snapping on Flutter Web
+class _WebScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+      };
+}
+
+// ── Post card ─────────────────────────────────────────────────────
 class _PostCard extends ConsumerStatefulWidget {
   final VideoModel video;
-  const _PostCard({required this.video});
+  final bool isActive;
+  const _PostCard({required this.video, required this.isActive});
 
   @override
   ConsumerState<_PostCard> createState() => _PostCardState();
 }
 
-class _PostCardState extends ConsumerState<_PostCard> {
+class _PostCardState extends ConsumerState<_PostCard>
+    with SingleTickerProviderStateMixin {
   bool _showHeart = false;
   bool _isLiked = false;
   int _likesCount = 0;
+  late AnimationController _heartCtrl;
+  late Animation<double> _heartScale;
+  late Animation<double> _heartOpacity;
 
   @override
   void initState() {
     super.initState();
     _likesCount = widget.video.likesCount;
     _checkLiked();
+
+    _heartCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _heartScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.3), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.3, end: 1.0), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 10),
+    ]).animate(CurvedAnimation(parent: _heartCtrl, curve: Curves.easeOut));
+    _heartOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 10),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 70),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 20),
+    ]).animate(_heartCtrl);
   }
 
   void _checkLiked() async {
@@ -169,8 +236,9 @@ class _PostCardState extends ConsumerState<_PostCard> {
     if (uid == null) return;
 
     setState(() => _showHeart = true);
-    Future.delayed(const Duration(milliseconds: 800),
-        () { if (mounted) setState(() => _showHeart = false); });
+    _heartCtrl.forward(from: 0).then((_) {
+      if (mounted) setState(() => _showHeart = false);
+    });
 
     if (!_isLiked) {
       await ApiService.likePost(widget.video.id, uid);
@@ -181,7 +249,6 @@ class _PostCardState extends ConsumerState<_PostCard> {
   void _toggleLike() async {
     final uid = ref.read(currentUidProvider);
     if (uid == null) return;
-
     if (_isLiked) {
       await ApiService.unlikePost(widget.video.id, uid);
       if (mounted) setState(() { _isLiked = false; _likesCount--; });
@@ -189,6 +256,12 @@ class _PostCardState extends ConsumerState<_PostCard> {
       await ApiService.likePost(widget.video.id, uid);
       if (mounted) setState(() { _isLiked = true; _likesCount++; });
     }
+  }
+
+  @override
+  void dispose() {
+    _heartCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -201,7 +274,7 @@ class _PostCardState extends ConsumerState<_PostCard> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Background: image or gradient
+          // ── Background ─────────────────────────────────────────
           if (hasImage)
             Image.network(
               video.imageUrl,
@@ -211,22 +284,29 @@ class _PostCardState extends ConsumerState<_PostCard> {
           else
             _buildGradientBg(video),
 
-          // Dark gradient overlay
+          // ── Top scrim ──────────────────────────────────────────
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.transparent,
-                  Colors.black.withAlpha(180),
-                ],
+                end: Alignment(0, 0.3),
+                colors: [Color(0x99000000), Colors.transparent],
               ),
             ),
           ),
 
-          // Caption overlay in center if no image and has caption
+          // ── Bottom scrim ───────────────────────────────────────
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment(0, -0.2),
+                colors: [Color(0xDD000000), Colors.transparent],
+              ),
+            ),
+          ),
+
+          // ── Center caption (no image) ──────────────────────────
           if (!hasImage && video.caption.isNotEmpty)
             Center(
               child: Padding(
@@ -235,21 +315,29 @@ class _PostCardState extends ConsumerState<_PostCard> {
                   video.caption,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
                     height: 1.4,
                     color: Colors.white,
+                    shadows: [Shadow(blurRadius: 8, color: Colors.black54)],
                   ),
                 ),
               ),
             ),
 
-          // Right side action buttons
+          // ── Right-side action buttons ──────────────────────────
           Positioned(
             right: 12,
-            bottom: 120,
+            bottom: 110,
             child: Column(
               children: [
+                // Avatar
+                _UserAvatar(
+                  photoUrl: video.userPhotoUrl,
+                  username: video.username,
+                ),
+                const SizedBox(height: 24),
+
                 // Like
                 _ActionButton(
                   icon: _isLiked
@@ -260,31 +348,24 @@ class _PostCardState extends ConsumerState<_PostCard> {
                   onTap: _toggleLike,
                 ),
                 const SizedBox(height: 20),
+
                 // Comment
                 _ActionButton(
-                  icon: Icons.comment_rounded,
+                  icon: Icons.chat_bubble_rounded,
                   label: _formatCount(video.commentsCount),
                   onTap: () => _showComments(context, video.id),
                 ),
                 const SizedBox(height: 20),
-                // Repost
-                _ActionButton(
-                  icon: Icons.repeat_rounded,
-                  label: 'Repost',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Reposted! 🔄'), backgroundColor: AppColors.success),
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
+
                 // Share
                 _ActionButton(
-                  icon: Icons.share_rounded,
+                  icon: Icons.reply_rounded,
                   label: 'Share',
                   onTap: () {},
+                  mirrorX: true,
                 ),
                 const SizedBox(height: 20),
+
                 // Views
                 _ActionButton(
                   icon: Icons.visibility_rounded,
@@ -295,46 +376,72 @@ class _PostCardState extends ConsumerState<_PostCard> {
             ),
           ),
 
-          // Bottom info
+          // ── Bottom info ────────────────────────────────────────
           Positioned(
             left: 16,
             right: 80,
-            bottom: 30,
+            bottom: 28,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('@${video.username}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 16)),
+                // Username
+                Row(
+                  children: [
+                    Text(
+                      '@${video.username}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          shadows: [Shadow(blurRadius: 6, color: Colors.black)]),
+                    ),
+                  ],
+                ),
                 if (hasImage && video.caption.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  Text(video.caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, height: 1.4)),
+                  Text(
+                    video.caption,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.45,
+                        color: Colors.white,
+                        shadows: [Shadow(blurRadius: 6, color: Colors.black)]),
+                  ),
                 ],
                 if (video.hashtags.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 5),
                   Text(
                     video.hashtags.map((t) => '#$t').join(' '),
                     style: const TextStyle(
                         color: AppColors.primary,
                         fontSize: 13,
-                        fontWeight: FontWeight.w600),
+                        fontWeight: FontWeight.w700),
                   ),
                 ],
               ],
             ),
           ),
 
-          // Artistcase watermark
-          const ArtistcaseWatermark(size: 14, opacity: 0.3),
+          // ── Watermark ──────────────────────────────────────────
+          const ArtistcaseWatermark(size: 14, opacity: 0.25),
 
-          // Double-tap heart animation
+          // ── Double-tap heart animation ─────────────────────────
           if (_showHeart)
-            const Center(
-              child: Icon(Icons.favorite_rounded,
-                  size: 100, color: Colors.redAccent),
+            Center(
+              child: AnimatedBuilder(
+                animation: _heartCtrl,
+                builder: (_, __) => Opacity(
+                  opacity: _heartOpacity.value,
+                  child: Transform.scale(
+                    scale: _heartScale.value,
+                    child: const Icon(Icons.favorite_rounded,
+                        size: 110,
+                        color: Colors.redAccent,
+                        shadows: [Shadow(blurRadius: 20, color: Colors.black)]),
+                  ),
+                ),
+              ),
             ),
         ],
       ),
@@ -342,19 +449,22 @@ class _PostCardState extends ConsumerState<_PostCard> {
   }
 
   Widget _buildGradientBg(VideoModel video) {
+    final seed = video.id.hashCode.abs();
+    final h1 = (seed % 360).toDouble();
+    final h2 = ((seed + 120) % 360).toDouble();
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Color((video.id.hashCode.abs() * 0xFFFFFF ~/ 100) | 0xFF000000),
-            Color(((video.id.hashCode.abs() + 42) * 0xFFFFFF ~/ 100) | 0xFF000000),
+            HSLColor.fromAHSL(1, h1, 0.6, 0.15).toColor(),
+            HSLColor.fromAHSL(1, h2, 0.7, 0.25).toColor(),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
       child: const Center(
-        child: Icon(Icons.article_rounded, size: 60, color: Colors.white24),
+        child: Icon(Icons.article_rounded, size: 70, color: Colors.white12),
       ),
     );
   }
@@ -362,10 +472,10 @@ class _PostCardState extends ConsumerState<_PostCard> {
   void _showComments(BuildContext context, String videoId) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.darkCard,
+      backgroundColor: const Color(0xFF1a1a1a),
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _CommentsSheet(videoId: videoId),
     );
   }
@@ -377,16 +487,76 @@ class _PostCardState extends ConsumerState<_PostCard> {
   }
 }
 
+// ── User avatar with + follow badge ──────────────────────────────
+class _UserAvatar extends StatelessWidget {
+  final String photoUrl;
+  final String username;
+  const _UserAvatar({required this.photoUrl, required this.username});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 48, height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          child: ClipOval(
+            child: photoUrl.isNotEmpty
+                ? Image.network(photoUrl, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _initials())
+                : _initials(),
+          ),
+        ),
+        Positioned(
+          bottom: -8,
+          child: Container(
+            width: 20, height: 20,
+            decoration: const BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                shape: BoxShape.circle),
+            child: const Icon(Icons.add, size: 12, color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _initials() {
+    return Container(
+      color: AppColors.primary.withAlpha(60),
+      child: Center(
+        child: Text(
+          username.isNotEmpty ? username[0].toUpperCase() : '?',
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Action button ─────────────────────────────────────────────────
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback onTap;
-  const _ActionButton(
-      {required this.icon,
-      required this.label,
-      this.color = Colors.white,
-      required this.onTap});
+  final bool mirrorX;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    this.color = Colors.white,
+    required this.onTap,
+    this.mirrorX = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -394,20 +564,30 @@ class _ActionButton extends StatelessWidget {
       onTap: onTap,
       child: Column(
         children: [
-          Icon(icon, size: 32, color: color),
+          Transform(
+            alignment: Alignment.center,
+            transform: mirrorX
+                ? (Matrix4.identity()..scale(-1.0, 1.0))
+                : Matrix4.identity(),
+            child: Icon(icon, size: 34, color: color,
+                shadows: const [Shadow(blurRadius: 6, color: Colors.black54)]),
+          ),
           const SizedBox(height: 4),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 11,
-                  color: color,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: TextStyle(
+                fontSize: 12,
+                color: color,
+                fontWeight: FontWeight.w700,
+                shadows: const [Shadow(blurRadius: 4, color: Colors.black)]),
+          ),
         ],
       ),
     );
   }
 }
 
-// ── Comments Sheet ───────────────────────────────────────────────
+// ── Comments sheet ────────────────────────────────────────────────
 class _CommentsSheet extends ConsumerStatefulWidget {
   final String videoId;
   const _CommentsSheet({required this.videoId});
@@ -441,21 +621,13 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
   void _post() async {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
-
     final uid = ref.read(currentUidProvider);
     if (uid == null) return;
-
     _commentController.clear();
-
     final comment = await ApiService.addComment(
-      postId: widget.videoId,
-      userId: uid,
-      text: text,
-    );
-
+        postId: widget.videoId, userId: uid, text: text);
     if (comment != null && mounted) {
       setState(() => _comments.add(comment));
-      // Also refresh feed to update comment count
       ref.invalidate(feedVideosProvider);
     }
   }
@@ -464,33 +636,33 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
-      maxChildSize: 0.9,
+      maxChildSize: 0.92,
       minChildSize: 0.4,
+      expand: false,
       builder: (_, controller) {
         return Column(
           children: [
             // Handle
             Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 36, height: 4,
               decoration: BoxDecoration(
-                  color: AppColors.textMuted,
+                  color: Colors.white24,
                   borderRadius: BorderRadius.circular(2)),
             ),
-            Text('Comments (${_comments.length})',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            const Divider(color: AppColors.darkBorder),
+            Text('${_comments.length} Comments',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 16)),
+            const Divider(color: Color(0xFF2a2a2a), height: 20),
 
-            // Comments list
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppColors.primary))
                   : _comments.isEmpty
                       ? const Center(
                           child: Text('No comments yet — be the first!',
-                              style: TextStyle(color: AppColors.textMuted)),
-                        )
+                              style: TextStyle(color: AppColors.textMuted)))
                       : ListView.builder(
                           controller: controller,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -498,34 +670,42 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
                           itemBuilder: (_, i) {
                             final c = _comments[i];
                             return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: AppColors.primary.withAlpha(40),
+                                    radius: 18,
+                                    backgroundColor:
+                                        AppColors.primary.withAlpha(40),
                                     backgroundImage: c.userPhotoUrl.isNotEmpty
                                         ? NetworkImage(c.userPhotoUrl)
                                         : null,
                                     child: c.userPhotoUrl.isEmpty
-                                        ? Text(c.username.isNotEmpty ? c.username[0].toUpperCase() : '?',
-                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))
+                                        ? Text(
+                                            c.username.isNotEmpty
+                                                ? c.username[0].toUpperCase()
+                                                : '?',
+                                            style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700))
                                         : null,
                                   ),
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(c.username,
                                             style: const TextStyle(
                                                 fontWeight: FontWeight.w700,
-                                                fontSize: 13)),
-                                        const SizedBox(height: 2),
+                                                fontSize: 13,
+                                                color: AppColors.textSecondary)),
+                                        const SizedBox(height: 3),
                                         Text(c.text,
                                             style: const TextStyle(
-                                                fontSize: 14, height: 1.3)),
+                                                fontSize: 14, height: 1.4)),
                                       ],
                                     ),
                                   ),
@@ -536,43 +716,46 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
                         ),
             ),
 
-            // Input
+            // Input bar
             Container(
               padding: EdgeInsets.only(
                   left: 16,
-                  right: 8,
+                  right: 12,
                   top: 10,
                   bottom: MediaQuery.of(context).padding.bottom + 10),
               decoration: const BoxDecoration(
-                  border:
-                      Border(top: BorderSide(color: AppColors.darkBorder))),
+                  border: Border(
+                      top: BorderSide(color: Color(0xFF2a2a2a)))),
               child: Row(
                 children: [
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                          color: AppColors.darkSurface,
+                          color: const Color(0xFF2a2a2a),
                           borderRadius: BorderRadius.circular(24)),
                       child: TextField(
                         controller: _commentController,
                         onSubmitted: (_) => _post(),
+                        style: const TextStyle(fontSize: 14),
                         decoration: const InputDecoration(
                             hintText: 'Add a comment...',
+                            hintStyle: TextStyle(color: AppColors.textMuted),
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10)),
+                                horizontal: 16, vertical: 12)),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: const BoxDecoration(
-                        gradient: AppColors.primaryGradient,
-                        shape: BoxShape.circle),
-                    child: IconButton(
-                      icon: const Icon(Icons.send_rounded,
-                          color: Colors.white, size: 20),
-                      onPressed: _post,
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: _post,
+                    child: Container(
+                      width: 40, height: 40,
+                      decoration: const BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          shape: BoxShape.circle),
+                      child: const Icon(Icons.send_rounded,
+                          color: Colors.white, size: 18),
                     ),
                   ),
                 ],
