@@ -1,3 +1,5 @@
+import 'dart:ui';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
@@ -7,11 +9,62 @@ import '../../../core/widgets/artistcase_logo.dart';
 import '../../../models/video_model.dart';
 import '../../../models/comment_model.dart';
 
-class FeedScreen extends ConsumerWidget {
+/// Custom scroll behavior that enables mouse drag on web
+class _WebScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+  };
+}
+
+class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FeedScreen> createState() => _FeedScreenState();
+}
+
+class _FeedScreenState extends ConsumerState<FeedScreen> {
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+  bool _isAnimating = false;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  /// Snap to next/previous page on any mouse wheel tick
+  void _onPointerScroll(PointerScrollEvent event, int totalPages) {
+    if (_isAnimating) return;
+
+    if (event.scrollDelta.dy > 0 && _currentPage < totalPages - 1) {
+      // Scroll down → next page
+      _isAnimating = true;
+      _currentPage++;
+      _pageController.animateToPage(
+        _currentPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      ).then((_) => _isAnimating = false);
+    } else if (event.scrollDelta.dy < 0 && _currentPage > 0) {
+      // Scroll up → previous page
+      _isAnimating = true;
+      _currentPage--;
+      _pageController.animateToPage(
+        _currentPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      ).then((_) => _isAnimating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final feedAsync = ref.watch(feedVideosProvider);
 
     return Scaffold(
@@ -37,11 +90,25 @@ class FeedScreen extends ConsumerWidget {
                   style: TextStyle(color: AppColors.textSecondary)),
             );
           }
-          return PageView.builder(
-            scrollDirection: Axis.vertical,
-            itemCount: videos.length,
-            itemBuilder: (context, index) =>
-                _PostCard(video: videos[index]),
+          return Listener(
+            onPointerSignal: (event) {
+              if (event is PointerScrollEvent) {
+                _onPointerScroll(event, videos.length);
+              }
+            },
+            child: ScrollConfiguration(
+              behavior: _WebScrollBehavior(),
+              child: PageView.builder(
+                controller: _pageController,
+                scrollDirection: Axis.vertical,
+                allowImplicitScrolling: true,
+                physics: const ClampingScrollPhysics(),
+                onPageChanged: (page) => _currentPage = page,
+                itemCount: videos.length,
+                itemBuilder: (context, index) =>
+                    _PostCard(video: videos[index]),
+              ),
+            ),
           );
         },
         loading: () => const Center(
@@ -56,6 +123,12 @@ class FeedScreen extends ConsumerWidget {
               Text('Error loading feed\n$e',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppColors.textSecondary)),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () => ref.invalidate(feedVideosProvider),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
             ],
           ),
         ),

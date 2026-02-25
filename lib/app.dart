@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/providers/providers.dart';
+import 'core/services/auth_persistence.dart';
 import 'core/widgets/artistcase_logo.dart';
 import 'features/feed/presentation/feed_screen.dart';
 import 'features/search/presentation/search_screen.dart';
@@ -26,14 +27,54 @@ class ArtistcaseApp extends StatelessWidget {
   }
 }
 
-/// Gate: checks mock login state and shows Login or MainShell
-class AuthGate extends ConsumerWidget {
+/// Gate: restores persisted session, then watches auth state
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final loggedIn = ref.watch(mockLoggedInProvider);
+  ConsumerState<AuthGate> createState() => _AuthGateState();
+}
 
+class _AuthGateState extends ConsumerState<AuthGate> {
+  bool _initializing = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final savedUser = await AuthPersistence.loadUser();
+      if (savedUser != null) {
+        ref.read(authUserProvider.notifier).state = savedUser;
+      }
+    } catch (_) {
+      // Silently fail — user will see login screen
+    }
+    if (mounted) setState(() => _initializing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Show splash while restoring session
+    if (_initializing) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ArtistcaseLogo(size: 64, showText: true),
+              SizedBox(height: 24),
+              CircularProgressIndicator(color: AppColors.primary),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final loggedIn = ref.watch(mockLoggedInProvider);
     if (loggedIn) {
       return const MainShell();
     }

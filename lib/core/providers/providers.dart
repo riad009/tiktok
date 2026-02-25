@@ -17,6 +17,7 @@ import '../../models/comment_model.dart';
 import '../../models/livestream_model.dart';
 import '../../models/report_model.dart';
 import '../../models/subscription_model.dart';
+import '../../models/clip_model.dart';
 
 // ── Repository Providers (kept for legacy methods) ───────────────
 final userRepositoryProvider = Provider<UserRepository>((ref) => UserRepository());
@@ -141,6 +142,33 @@ final liveChatProvider = StreamProvider.family<List<LiveChatMessage>, String>((r
     LiveChatMessage(id: 'lc4', senderId: 'user-008', username: 'fitness_nina',
       text: '🙌🙌🙌', timestamp: DateTime.now()),
   ]);
+});
+
+// ── Livestream Clips (mock) ─────────────────────────────────────
+final livestreamClipsProvider = FutureProvider.family<List<ClipModel>, String>((ref, livestreamId) async {
+  return MockData.clipsForLivestream(livestreamId);
+});
+
+final userClipsProvider = FutureProvider.family<List<ClipModel>, String>((ref, userId) async {
+  return MockData.clipsForUser(userId);
+});
+
+final allClipsProvider = FutureProvider<List<ClipModel>>((ref) async {
+  return MockData.livestreamClips;
+});
+
+// ── Group Conversations (mock) ──────────────────────────────────
+final groupConversationsProvider = FutureProvider<List<ConversationModel>>((ref) async {
+  final uid = ref.watch(currentUidProvider);
+  if (uid == null) return [];
+  return MockData.groupConversations
+      .where((g) => g.participants.contains(uid))
+      .toList();
+});
+
+// ── Blocked Users ───────────────────────────────────────────────
+final blockedUsersProvider = StateProvider<List<String>>((ref) {
+  return List<String>.from(MockData.blockedUserIds);
 });
 
 // ── Reports (mock admin) ────────────────────────────────────────

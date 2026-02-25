@@ -6,10 +6,10 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gradient_button.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/auth_persistence.dart';
 import '../../../core/data/mock_data.dart';
 import '../../../models/user_model.dart';
 import '../../../models/video_model.dart';
-import '../../../models/livestream_model.dart';
 import '../../chat/presentation/chat_screen.dart';
 import '../../dashboard/presentation/creator_dashboard_screen.dart';
 import '../../monetization/presentation/monetization_screen.dart';
@@ -62,7 +62,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           if (_isOwnProfile)
             IconButton(
               icon: const Icon(Icons.logout_rounded),
-              onPressed: () => ref.read(authUserProvider.notifier).state = null,
+              onPressed: () {
+                AuthPersistence.clear();
+                ref.read(authUserProvider.notifier).state = null;
+              },
             ),
         ],
       ),

@@ -7,6 +7,7 @@ import '../../models/livestream_model.dart';
 import '../../models/report_model.dart';
 import '../../models/subscription_model.dart';
 import '../../models/music_model.dart';
+import '../../models/clip_model.dart';
 
 /// Central mock data source — every screen reads from here.
 class MockData {
@@ -305,6 +306,54 @@ class MockData {
     ),
   ];
 
+  // ── Mock Group Conversations ───────────────────────────────────
+  static final List<ConversationModel> groupConversations = [
+    ConversationModel(
+      id: 'group-1',
+      participants: ['mock-admin-uid-001', 'user-002', 'user-003', 'user-004'],
+      lastMessage: 'Let\'s plan the collab! 🎬',
+      lastMessageTime: DateTime.now().subtract(const Duration(minutes: 30)),
+      participantNames: {
+        'mock-admin-uid-001': 'Admin User',
+        'user-002': 'Sarah Chen',
+        'user-003': 'Mike Rodriguez',
+        'user-004': 'Priya Sharma',
+      },
+      participantPhotos: {
+        'mock-admin-uid-001': avatar(1),
+        'user-002': avatar(5),
+        'user-003': avatar(8),
+        'user-004': avatar(9),
+      },
+      isGroupChat: true,
+      groupName: 'Creative Crew 🎨',
+      createdBy: 'mock-admin-uid-001',
+      adminIds: ['mock-admin-uid-001'],
+    ),
+    ConversationModel(
+      id: 'group-2',
+      participants: ['mock-admin-uid-001', 'user-006', 'user-007', 'user-008'],
+      lastMessage: 'See you at the event! 🎉',
+      lastMessageTime: DateTime.now().subtract(const Duration(hours: 2)),
+      participantNames: {
+        'mock-admin-uid-001': 'Admin User',
+        'user-006': 'Emma Wilson',
+        'user-007': 'Jay Park',
+        'user-008': 'Nina Petrova',
+      },
+      participantPhotos: {
+        'mock-admin-uid-001': avatar(1),
+        'user-006': avatar(16),
+        'user-007': avatar(14),
+        'user-008': avatar(20),
+      },
+      isGroupChat: true,
+      groupName: 'Wellness Warriors 💪',
+      createdBy: 'user-008',
+      adminIds: ['user-008', 'mock-admin-uid-001'],
+    ),
+  ];
+
   // ── Mock Messages ──────────────────────────────────────────────
   static List<MessageModel> messagesFor(String convoId) {
     return [
@@ -358,6 +407,7 @@ class MockData {
       isLive: false, viewerCount: 4500, totalReactions: 12000,
       startedAt: DateTime.now().subtract(const Duration(days: 1)),
       endedAt: DateTime.now().subtract(const Duration(hours: 22)),
+      peakViewers: 4500,
     ),
     LivestreamModel(
       id: 'replay-2', hostId: 'user-007', hostUsername: 'traveler_jay',
@@ -365,6 +415,7 @@ class MockData {
       isLive: false, viewerCount: 8900, totalReactions: 23000,
       startedAt: DateTime.now().subtract(const Duration(days: 2)),
       endedAt: DateTime.now().subtract(const Duration(days: 1, hours: 21)),
+      peakViewers: 8900,
     ),
     LivestreamModel(
       id: 'replay-3', hostId: 'mock-admin-uid-001', hostUsername: 'admin',
@@ -372,8 +423,75 @@ class MockData {
       isLive: false, viewerCount: 3200, totalReactions: 8400,
       startedAt: DateTime.now().subtract(const Duration(days: 3)),
       endedAt: DateTime.now().subtract(const Duration(days: 2, hours: 22)),
+      peakViewers: 3200,
     ),
   ];
+
+  // ── Mock Livestream Clips ──────────────────────────────────────
+  static final List<ClipModel> livestreamClips = [
+    ClipModel(
+      id: 'clip-1',
+      livestreamId: 'replay-1',
+      hostId: 'user-008',
+      hostUsername: 'fitness_nina',
+      hostPhotoUrl: avatar(20),
+      title: '🔥 Peak moment — 200 reactions burst!',
+      thumbnailUrl: thumbnail(10),
+      startTime: const Duration(minutes: 12, seconds: 30),
+      endTime: const Duration(minutes: 13, seconds: 15),
+      highlightType: 'peak_reactions',
+      likesCount: 890,
+      viewsCount: 4500,
+    ),
+    ClipModel(
+      id: 'clip-2',
+      livestreamId: 'replay-1',
+      hostId: 'user-008',
+      hostUsername: 'fitness_nina',
+      hostPhotoUrl: avatar(20),
+      title: '💪 Killer burpee combo',
+      thumbnailUrl: thumbnail(11),
+      startTime: const Duration(minutes: 25),
+      endTime: const Duration(minutes: 25, seconds: 45),
+      highlightType: 'chat_burst',
+      likesCount: 1200,
+      viewsCount: 6700,
+      postedToFeed: true,
+    ),
+    ClipModel(
+      id: 'clip-3',
+      livestreamId: 'replay-2',
+      hostId: 'user-007',
+      hostUsername: 'traveler_jay',
+      hostPhotoUrl: avatar(14),
+      title: '🇯🇵 Cherry blossom reveal!',
+      thumbnailUrl: thumbnail(12),
+      startTime: const Duration(minutes: 8, seconds: 15),
+      endTime: const Duration(minutes: 9),
+      highlightType: 'peak_viewers',
+      likesCount: 3400,
+      viewsCount: 12000,
+      postedToFeed: true,
+      sharedToStory: true,
+    ),
+    ClipModel(
+      id: 'clip-4',
+      livestreamId: 'replay-3',
+      hostId: 'mock-admin-uid-001',
+      hostUsername: 'admin',
+      hostPhotoUrl: avatar(1),
+      title: '🎙️ Big announcement moment',
+      thumbnailUrl: thumbnail(13),
+      startTime: const Duration(minutes: 15, seconds: 30),
+      endTime: const Duration(minutes: 16, seconds: 20),
+      highlightType: 'peak_reactions',
+      likesCount: 2100,
+      viewsCount: 8900,
+    ),
+  ];
+
+  // ── Blocked Users (mock) ───────────────────────────────────────
+  static final List<String> blockedUserIds = [];
 
   // ── Mock Reports (Admin) ───────────────────────────────────────
   static final List<ReportModel> reports = [
@@ -450,6 +568,16 @@ class MockData {
   // ── Helper: user's livestream replays ──────────────────────────
   static List<LivestreamModel> livestreamsForUser(String uid) {
     return replays.where((l) => l.hostId == uid).toList();
+  }
+
+  // ── Helper: clips for a specific livestream ────────────────────
+  static List<ClipModel> clipsForLivestream(String livestreamId) {
+    return livestreamClips.where((c) => c.livestreamId == livestreamId).toList();
+  }
+
+  // ── Helper: clips for a specific user ──────────────────────────
+  static List<ClipModel> clipsForUser(String userId) {
+    return livestreamClips.where((c) => c.hostId == userId).toList();
   }
 
   // ── Helper: music track by id ──────────────────────────────────

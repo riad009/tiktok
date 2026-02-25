@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gradient_button.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/auth_persistence.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -72,6 +73,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         final user = await ApiService.login(email: email, password: password);
         if (user != null) {
           ref.read(authUserProvider.notifier).state = user;
+          await AuthPersistence.saveUser(user);
         }
       } else {
         final username = _usernameController.text.trim().toLowerCase();
@@ -86,6 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         );
         if (user != null) {
           ref.read(authUserProvider.notifier).state = user;
+          await AuthPersistence.saveUser(user);
         }
       }
     } catch (e) {

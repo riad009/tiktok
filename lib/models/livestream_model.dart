@@ -57,6 +57,8 @@ class LivestreamModel {
   final List<String> viewerIds;
   final int totalReactions;
   final int peakViewers;
+  final List<String> notifiedFollowers;
+  final List<String> clipIds;
 
   LivestreamModel({
     required this.id,
@@ -72,6 +74,8 @@ class LivestreamModel {
     this.viewerIds = const [],
     this.totalReactions = 0,
     this.peakViewers = 0,
+    this.notifiedFollowers = const [],
+    this.clipIds = const [],
   }) : startedAt = startedAt ?? DateTime.now();
 
   factory LivestreamModel.fromMap(Map<String, dynamic> map, String docId) {
@@ -89,6 +93,8 @@ class LivestreamModel {
       viewerIds: List<String>.from(map['viewerIds'] ?? []),
       totalReactions: map['totalReactions'] ?? 0,
       peakViewers: map['peakViewers'] ?? 0,
+      notifiedFollowers: List<String>.from(map['notifiedFollowers'] ?? []),
+      clipIds: List<String>.from(map['clipIds'] ?? []),
     );
   }
 
@@ -106,6 +112,8 @@ class LivestreamModel {
       'viewerIds': viewerIds,
       'totalReactions': totalReactions,
       'peakViewers': peakViewers,
+      'notifiedFollowers': notifiedFollowers,
+      'clipIds': clipIds,
     };
   }
 
@@ -116,6 +124,8 @@ class LivestreamModel {
     String? replayUrl,
     int? totalReactions,
     int? peakViewers,
+    List<String>? notifiedFollowers,
+    List<String>? clipIds,
   }) {
     return LivestreamModel(
       id: id,
@@ -131,6 +141,8 @@ class LivestreamModel {
       viewerIds: viewerIds,
       totalReactions: totalReactions ?? this.totalReactions,
       peakViewers: peakViewers ?? this.peakViewers,
+      notifiedFollowers: notifiedFollowers ?? this.notifiedFollowers,
+      clipIds: clipIds ?? this.clipIds,
     );
   }
 }

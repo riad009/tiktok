@@ -22,8 +22,11 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   final _imageUrlController = TextEditingController();
   XFile? _selectedImage;
   Uint8List? _imageBytes;
+  XFile? _selectedVideo;
+  String _videoFileName = '';
+  bool _pickingVideo = false;
   bool _isUploading = false;
-  String _postType = 'text'; // 'text', 'image', 'url'
+  String _postType = 'text'; // 'text', 'image', 'url', 'video'
 
   @override
   void dispose() {
@@ -48,6 +51,35 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         _imageBytes = bytes;
         _postType = 'image';
       });
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    setState(() => _pickingVideo = true);
+    try {
+      final picker = ImagePicker();
+      final video = await picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 10),
+      );
+      if (video != null) {
+        setState(() {
+          _selectedVideo = video;
+          _videoFileName = video.name;
+          _postType = 'video';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not pick video: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pickingVideo = false);
     }
   }
 
@@ -275,59 +307,161 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
 
             // Video editor launcher
             if (_postType == 'video') ...[
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const VideoEditorScreen()),
-                ),
-                child: Container(
-                  height: 220,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.primary.withValues(alpha: 0.12),
-                        AppColors.secondary.withValues(alpha: 0.12),
+              // Step 1: Pick a video
+              if (_selectedVideo == null)
+                GestureDetector(
+                  onTap: _pickingVideo ? null : _pickVideo,
+                  child: Container(
+                    height: 220,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.primary.withValues(alpha: 0.12),
+                          AppColors.secondary.withValues(alpha: 0.12),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: AppColors.darkBorder, width: 2),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.3),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: _pickingVideo
+                              ? const Padding(
+                                  padding: EdgeInsets.all(18),
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white, strokeWidth: 2))
+                              : const Icon(Icons.video_library_rounded,
+                                  size: 36, color: Colors.white),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                            _pickingVideo
+                                ? 'Opening picker...'
+                                : 'Select a Video',
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 6),
+                        const Text('Choose a video to edit in the studio',
+                            style: TextStyle(
+                                color: AppColors.textMuted, fontSize: 13)),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.darkBorder, width: 2),
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                )
+              else ...[
+                // Step 2: Video selected – show preview + edit button
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkCard,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.darkBorder),
+                  ),
+                  child: Row(
                     children: [
                       Container(
-                        width: 72,
-                        height: 72,
+                        width: 56,
+                        height: 56,
                         decoration: BoxDecoration(
                           gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.3),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.videocam_rounded,
+                            color: Colors.white, size: 28),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_videoFileName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 4),
+                            const Text('Ready to edit',
+                                style: TextStyle(
+                                    color: AppColors.textMuted,
+                                    fontSize: 12)),
                           ],
                         ),
-                        child: const Icon(Icons.movie_creation_outlined,
-                            size: 36, color: Colors.white),
                       ),
-                      const SizedBox(height: 16),
-                      const Text('Edit in Studio',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      const Text(
-                          'Filters · Trim · Captions · Tags · Watermark · Music',
-                          style: TextStyle(
-                              color: AppColors.textMuted, fontSize: 13)),
+                      IconButton(
+                        icon: const Icon(Icons.swap_horiz_rounded,
+                            color: AppColors.textMuted),
+                        tooltip: 'Change video',
+                        onPressed: _pickVideo,
+                      ),
                     ],
                   ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => VideoEditorScreen(
+                            videoFile: _selectedVideo)),
+                  ),
+                  child: Container(
+                    height: 56,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.movie_creation_outlined,
+                            color: Colors.white, size: 22),
+                        SizedBox(width: 10),
+                        Text('Edit in Studio',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Center(
+                  child: Text(
+                      'Filters · Trim · Captions · Tags · Watermark · Music',
+                      style: TextStyle(
+                          color: AppColors.textMuted, fontSize: 12)),
+                ),
+              ],
               const SizedBox(height: 20),
             ],
 

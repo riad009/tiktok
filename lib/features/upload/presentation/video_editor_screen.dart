@@ -1,17 +1,23 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:video_player/video_player.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/data/mock_data.dart';
+import '../../../core/services/api_service.dart';
 
 /// ──────────────────────────────────────────────────────────────────────────────
 ///  Advanced Video Editor – Filters, Trim/Crop, Captions, Tags, Watermark
 /// ──────────────────────────────────────────────────────────────────────────────
 
 class VideoEditorScreen extends StatefulWidget {
-  const VideoEditorScreen({super.key});
+  final XFile? videoFile;
+  const VideoEditorScreen({super.key, this.videoFile});
 
   @override
   State<VideoEditorScreen> createState() => _VideoEditorScreenState();
@@ -20,6 +26,13 @@ class VideoEditorScreen extends StatefulWidget {
 class _VideoEditorScreenState extends State<VideoEditorScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
+
+  // ── Video file state ─────────────────────────────────────────
+  XFile? _selectedVideo;
+  VideoPlayerController? _videoCtrl;
+  bool _videoReady = false;
+  String _videoFileName = '';
+  bool _pickingVideo = false;
 
   // ── Filter state ─────────────────────────────────────────────
   int _selectedFilter = 0;
@@ -62,6 +75,11 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
   bool _musicLooping = true;
   double _musicStartOffset = 0.0; // 0..1 where in the track to start
 
+  // ── Audio player ─────────────────────────────────────────────
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  String? _currentlyPlayingId;
+
   // ── Filters data ─────────────────────────────────────────────
   static const _identity = <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
 
@@ -84,6 +102,30 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 6, vsync: this);
+    // Pre-load video from upload screen if provided
+    if (widget.videoFile != null) {
+      _selectedVideo = widget.videoFile;
+      _videoFileName = widget.videoFile!.name;
+      _initVideoPlayer(widget.videoFile!);
+    }
+  }
+
+  Future<void> _initVideoPlayer(XFile file) async {
+    try {
+      _videoCtrl?.dispose();
+      final controller = VideoPlayerController.networkUrl(Uri.parse(file.path));
+      await controller.initialize();
+      controller.setLooping(true);
+      if (mounted) {
+        setState(() {
+          _videoCtrl = controller;
+          _videoReady = true;
+        });
+      }
+    } catch (_) {
+      // fallback — video cannot be initialized on this platform
+      if (mounted) setState(() => _videoReady = false);
+    }
   }
 
   @override
@@ -93,7 +135,97 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
     _mentionCtrl.dispose();
     _hashtagCtrl.dispose();
     _musicSearchCtrl.dispose();
+    _audioPlayer.dispose();
+    _videoCtrl?.dispose();
     super.dispose();
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  AUDIO PLAYBACK
+  // ──────────────────────────────────────────────────────────────
+  Future<void> _playPreview(_DeezerTrack track) async {
+    try {
+      // If same track is playing, pause it
+      if (_currentlyPlayingId == track.id && _isPlaying) {
+        await _audioPlayer.pause();
+        setState(() => _isPlaying = false);
+        return;
+      }
+
+      // Set up new track
+      setState(() {
+        _currentlyPlayingId = track.id;
+        _isPlaying = true;
+      });
+
+      await _audioPlayer.setUrl(track.previewUrl);
+      await _audioPlayer.setVolume(_musicVolume);
+      await _audioPlayer.setLoopMode(_musicLooping ? LoopMode.one : LoopMode.off);
+      _audioPlayer.play();
+
+      // Listen for completion
+      _audioPlayer.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed) {
+          if (mounted) {
+            setState(() => _isPlaying = false);
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _currentlyPlayingId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not play preview: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopPlayback() async {
+    await _audioPlayer.stop();
+    setState(() {
+      _isPlaying = false;
+      _currentlyPlayingId = null;
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  VIDEO PICKER
+  // ──────────────────────────────────────────────────────────────
+  Future<void> _pickVideo() async {
+    setState(() => _pickingVideo = true);
+    try {
+      final picker = ImagePicker();
+      final video = await picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 10),
+      );
+      if (video != null) {
+        setState(() {
+          _selectedVideo = video;
+          _videoFileName = video.name;
+          _videoReady = false;
+        });
+        _initVideoPlayer(video);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not pick video: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pickingVideo = false);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -171,40 +303,194 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
           clipBehavior: Clip.antiAlias,
           child: Stack(
             children: [
-              // Placeholder with filter overlay
+              // Video preview / picker
               Positioned.fill(
                 child: ColorFiltered(
                   colorFilter: _selectedFilter > 0
                       ? ColorFilter.matrix(_getInterpolatedMatrix())
                       : const ColorFilter.mode(
                           Colors.transparent, BlendMode.multiply),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          AppColors.darkSurface,
-                          AppColors.primary.withValues(alpha: 0.08),
-                          AppColors.secondary.withValues(alpha: 0.08),
-                          AppColors.darkSurface,
-                        ],
-                      ),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.play_circle_outline,
-                              size: 64, color: Colors.white12),
-                          const SizedBox(height: 8),
-                          Text('Video Preview',
-                              style: TextStyle(
-                                  color: Colors.white24, fontSize: 14)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: _selectedVideo == null
+                      ? GestureDetector(
+                          onTap: _pickingVideo ? null : _pickVideo,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  AppColors.darkSurface,
+                                  AppColors.primary.withValues(alpha: 0.06),
+                                  AppColors.secondary.withValues(alpha: 0.06),
+                                  AppColors.darkSurface,
+                                ],
+                              ),
+                            ),
+                            child: Center(
+                              child: _pickingVideo
+                                  ? const CircularProgressIndicator(color: AppColors.primary)
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 72,
+                                          height: 72,
+                                          decoration: BoxDecoration(
+                                            gradient: AppColors.primaryGradient,
+                                            borderRadius: BorderRadius.circular(20),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: AppColors.primary.withValues(alpha: 0.3),
+                                                blurRadius: 16,
+                                                offset: const Offset(0, 6),
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(Icons.video_library_rounded,
+                                              size: 36, color: Colors.white),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        const Text('Tap to Select Video',
+                                            style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700)),
+                                        const SizedBox(height: 6),
+                                        const Text('Choose a video from your gallery',
+                                            style: TextStyle(
+                                                color: AppColors.textMuted,
+                                                fontSize: 12)),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        )
+                      : GestureDetector(
+                          onTap: () {
+                            if (_videoCtrl != null && _videoReady) {
+                              setState(() {
+                                _videoCtrl!.value.isPlaying
+                                    ? _videoCtrl!.pause()
+                                    : _videoCtrl!.play();
+                              });
+                            }
+                          },
+                          child: Stack(
+                            children: [
+                              // Actual video player
+                              if (_videoCtrl != null && _videoReady)
+                                Positioned.fill(
+                                  child: FittedBox(
+                                    fit: BoxFit.cover,
+                                    child: SizedBox(
+                                      width: _videoCtrl!.value.size.width,
+                                      height: _videoCtrl!.value.size.height,
+                                      child: VideoPlayer(_videoCtrl!),
+                                    ),
+                                  ),
+                                )
+                              else
+                                // Loading state
+                                Container(
+                                  color: AppColors.darkSurface,
+                                  child: const Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircularProgressIndicator(color: AppColors.primary),
+                                        SizedBox(height: 12),
+                                        Text('Loading video...',
+                                            style: TextStyle(
+                                                color: AppColors.textMuted,
+                                                fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+
+                              // Play/Pause overlay
+                              if (_videoCtrl != null && _videoReady)
+                                Center(
+                                  child: AnimatedOpacity(
+                                    opacity: !_videoCtrl!.value.isPlaying ? 1.0 : 0.0,
+                                    duration: const Duration(milliseconds: 300),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.5),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.play_arrow_rounded,
+                                          size: 44, color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+
+                              // Filename badge
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.65),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.videocam,
+                                          size: 13, color: AppColors.primary),
+                                      const SizedBox(width: 5),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 160),
+                                        child: Text(
+                                          _videoFileName,
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              // Change video button
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: GestureDetector(
+                                  onTap: _pickVideo,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.65),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.swap_horiz,
+                                            size: 14, color: Colors.white70),
+                                        SizedBox(width: 4),
+                                        Text('Change',
+                                            style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                 ),
               ),
 
@@ -1321,8 +1607,9 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
     if (query.trim().isEmpty) return;
     setState(() => _musicSearching = true);
     try {
+      // Use backend proxy to avoid CORS issues on web
       final uri = Uri.parse(
-          'https://api.deezer.com/search?q=${Uri.encodeComponent(query.trim())}&limit=20');
+          '${ApiService.baseUrl}/music/search?q=${Uri.encodeComponent(query.trim())}');
       final res = await http.get(uri);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -1465,13 +1752,50 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
                       ),
                       IconButton(
                         icon: const Icon(Icons.close, color: AppColors.error, size: 20),
-                        onPressed: () => setState(() => _selectedMusic = null),
+                        onPressed: () {
+                          _stopPlayback();
+                          setState(() => _selectedMusic = null);
+                        },
                         constraints: const BoxConstraints(),
                         padding: EdgeInsets.zero,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+                  // Play/Pause preview button
+                  GestureDetector(
+                    onTap: () => _playPreview(_selectedMusic!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            (_currentlyPlayingId == _selectedMusic!.id && _isPlaying)
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            (_currentlyPlayingId == _selectedMusic!.id && _isPlaying)
+                                ? 'Pause Preview'
+                                : 'Play Preview',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   // Volume slider
                   Row(
                     children: [
@@ -1483,7 +1807,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
                       Expanded(
                         child: Slider(
                           value: _musicVolume,
-                          onChanged: (v) => setState(() => _musicVolume = v),
+                          onChanged: (v) {
+                            setState(() => _musicVolume = v);
+                            _audioPlayer.setVolume(v);
+                          },
                           activeColor: AppColors.primary,
                           inactiveColor: AppColors.darkBorder,
                         ),
@@ -1524,7 +1851,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
                       const Spacer(),
                       Switch(
                         value: _musicLooping,
-                        onChanged: (v) => setState(() => _musicLooping = v),
+                        onChanged: (v) {
+                          setState(() => _musicLooping = v);
+                          _audioPlayer.setLoopMode(v ? LoopMode.one : LoopMode.off);
+                        },
                         activeColor: AppColors.primary,
                       ),
                     ],
@@ -1593,11 +1923,40 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
           else
             ..._musicSearchResults.map((track) {
               final isSelected = _selectedMusic?.id == track.id;
+              final isThisPlaying = _currentlyPlayingId == track.id && _isPlaying;
               return GestureDetector(
-                onTap: () => setState(() {
-                  _selectedMusic = track;
-                  _musicStartOffset = 0.0;
-                }),
+                onTap: () {
+                  final wasAlreadySelected = _selectedMusic?.id == track.id;
+                  setState(() {
+                    _selectedMusic = track;
+                    _musicStartOffset = 0.0;
+                  });
+                  _playPreview(track);
+                  if (!wasAlreadySelected) {
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            const Icon(Icons.music_note, color: Colors.white, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '\"${track.title}\" added as video background music',
+                                style: const TextStyle(fontSize: 13),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        backgroundColor: AppColors.success,
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.only(bottom: 6),
@@ -1658,7 +2017,28 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
                       Text(_formatDuration(track.duration),
                           style: const TextStyle(
                               color: AppColors.textMuted, fontSize: 11)),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
+                      // Play/pause per track
+                      GestureDetector(
+                        onTap: () => _playPreview(track),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: isThisPlaying
+                                ? AppColors.primary
+                                : AppColors.darkBorder.withValues(alpha: 0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isThisPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         width: 32,

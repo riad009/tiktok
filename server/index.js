@@ -11,6 +11,21 @@ app.use(express.json({ limit: '50mb' }));
 // ─── Health check ────────────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
+// ─── MUSIC SEARCH (Deezer proxy to avoid CORS) ──────────────────
+app.get('/api/music/search', async (req, res) => {
+    try {
+        const q = req.query.q || '';
+        if (!q.trim()) return res.json({ data: [] });
+        const url = `https://api.deezer.com/search?q=${encodeURIComponent(q.trim())}&limit=30`;
+        const response = await fetch(url);
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        console.error('Music search error:', err.message);
+        res.status(500).json({ error: 'Music search failed', data: [] });
+    }
+});
+
 // ─── AUTH ────────────────────────────────────────────────────────
 
 // POST /api/auth/signup

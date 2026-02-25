@@ -62,6 +62,8 @@ class ConversationModel {
   final bool isGroupChat;
   final String groupName;
   final String groupPhotoUrl;
+  final String createdBy;
+  final List<String> adminIds;
 
   ConversationModel({
     required this.id,
@@ -73,6 +75,8 @@ class ConversationModel {
     this.isGroupChat = false,
     this.groupName = '',
     this.groupPhotoUrl = '',
+    this.createdBy = '',
+    this.adminIds = const [],
   }) : lastMessageTime = lastMessageTime ?? DateTime.now();
 
   factory ConversationModel.fromMap(Map<String, dynamic> map, String docId) {
@@ -89,6 +93,8 @@ class ConversationModel {
       isGroupChat: map['isGroupChat'] ?? false,
       groupName: map['groupName'] ?? '',
       groupPhotoUrl: map['groupPhotoUrl'] ?? '',
+      createdBy: map['createdBy'] ?? '',
+      adminIds: List<String>.from(map['adminIds'] ?? []),
     );
   }
 
@@ -102,6 +108,9 @@ class ConversationModel {
       'isGroupChat': isGroupChat,
       'groupName': groupName,
       'groupPhotoUrl': groupPhotoUrl,
+      'createdBy': createdBy,
+      'adminIds': adminIds,
     };
   }
 }
+

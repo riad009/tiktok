@@ -13,6 +13,9 @@ class ApiService {
       ? '/api'
       : 'http://localhost:3001/api';
 
+  /// Public accessor for the API base URL (used by music search proxy etc.)
+  static String get baseUrl => _baseUrl;
+
   // ── Auth ─────────────────────────────────────────────────────
   static Future<UserModel?> signup({
     required String username,
