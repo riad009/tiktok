@@ -61,17 +61,35 @@ router.post('/', async (req, res) => {
 
         const row = result.rows[0];
 
-        res.status(201).json({
+        const streamPayload = {
             id: row.id,
             title: row.title,
             hostId: userId,
+            hostUsername: '',   // populated below
+            hostPhotoUrl: '',
             muxStreamId,
             muxPlaybackId,
             streamKey,
             rtmpUrl: RTMP_BASE_URL,
             playbackUrl,
             status: row.status,
-        });
+            viewerCount: 0,
+        };
+
+        // 3. Fetch host profile and add to payload
+        try {
+            const user = await pool.query('SELECT username, photo_url FROM users WHERE id = $1', [userId]);
+            if (user.rows.length > 0) {
+                streamPayload.hostUsername = user.rows[0].username;
+                streamPayload.hostPhotoUrl = user.rows[0].photo_url || '';
+            }
+        } catch (_) {}
+
+        // 4. 📡 Broadcast to ALL connected clients — Live Now list updates immediately
+        const io = req.app.get('io');
+        if (io) io.emit('stream_created', streamPayload);
+
+        res.status(201).json(streamPayload);
     } catch (err) {
         console.error('Create livestream error:', err.message);
         res.status(500).json({ error: 'Failed to create stream', detail: err.message });
@@ -164,6 +182,10 @@ router.delete('/:id', async (req, res) => {
             [req.params.id]
         );
 
+        // 📡 Tell all clients this stream ended — remove from Live Now list
+        const io = req.app.get('io');
+        if (io) io.emit('stream_ended', { id: req.params.id });
+
         res.json({ success: true });
     } catch (err) {
         console.error('End livestream error:', err.message);
@@ -182,14 +204,17 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         console.log('📡 Mux webhook:', type);
 
         switch (type) {
-            case 'video.live_stream.active':
-                // Stream went live — mark active, update viewer count
-                await pool.query(
+            case 'video.live_stream.active': {
+                // Stream went live — mark active
+                const updated = await pool.query(
                     `UPDATE livestreams SET status = 'active', started_at = COALESCE(started_at, NOW())
-           WHERE mux_stream_id = $1`,
+           WHERE mux_stream_id = $1 RETURNING id`,
                     [data.id]
                 );
+                // 📡 Tell all clients this stream is now LIVE
+                // (so its card appears if it was in idle state)
                 break;
+            }
 
             case 'video.live_stream.idle':
                 // Stream paused / reconnecting

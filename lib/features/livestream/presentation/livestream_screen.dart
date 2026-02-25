@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:socket_io_client/socket_io_client.dart' as sio;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/services/api_service.dart';
@@ -547,52 +548,125 @@ class _CredentialTileState extends State<_CredentialTile> {
 }
 
 // ── Live Now tab ──────────────────────────────────────────────────
-class _LiveNowTab extends ConsumerWidget {
+class _LiveNowTab extends ConsumerStatefulWidget {
   final void Function(LivestreamModel) onOpen;
   const _LiveNowTab({required this.onOpen});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final liveAsync = ref.watch(activeLivestreamsProvider);
-    return liveAsync.when(
-      data: (streams) {
-        if (streams.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.live_tv, size: 64, color: AppColors.textMuted),
-                const SizedBox(height: 16),
-                const Text('No one is live right now',
-                    style: TextStyle(
-                        color: AppColors.textSecondary, fontSize: 16)),
-                const SizedBox(height: 8),
-                const Text('Be the first to go live!',
-                    style: TextStyle(
-                        color: AppColors.textMuted, fontSize: 14)),
-              ],
-            ),
+  ConsumerState<_LiveNowTab> createState() => _LiveNowTabState();
+}
+
+class _LiveNowTabState extends ConsumerState<_LiveNowTab> {
+  // Mutable list — seeded from provider, updated by socket events
+  List<LivestreamModel> _streams = [];
+  bool _initialised = false;
+
+  // Socket.io connection (lazy — initialised after first build)
+  dynamic _socket;
+
+  static const _socketUrl = 'http://localhost:3001';
+
+  @override
+  void initState() {
+    super.initState();
+    _connectSocket();
+  }
+
+  void _connectSocket() {
+    try {
+      _socket = sio.io(
+        _socketUrl,
+        sio.OptionBuilder()
+            .setTransports(['websocket'])
+            .disableAutoConnect()
+            .build(),
+      );
+      _socket.connect();
+
+      // 📡 New stream created — add to top of list
+      _socket.on('stream_created', (data) {
+        if (!mounted) return;
+        try {
+          final stream = LivestreamModel.fromJson(
+            Map<String, dynamic>.from(data as Map),
           );
-        }
-        return GridView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 0.75,
-          ),
-          itemCount: streams.length,
-          itemBuilder: (_, i) => _LiveCard(stream: streams[i], onTap: () => onOpen(streams[i])),
-        );
-      },
-      loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary)),
-      error: (_, __) =>
-          const Center(child: Text('Error loading streams')),
+          setState(() {
+            if (!_streams.any((s) => s.id == stream.id)) {
+              _streams = [stream, ..._streams];
+            }
+          });
+        } catch (_) {}
+      });
+
+      // 📡 Stream ended — remove from list
+      _socket.on('stream_ended', (data) {
+        if (!mounted) return;
+        final id = (data as Map)['id']?.toString() ?? '';
+        if (id.isEmpty) return;
+        setState(() => _streams = _streams.where((s) => s.id != id).toList());
+      });
+    } catch (e) {
+      debugPrint('LiveNowTab socket error (degraded): $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _socket?.disconnect();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Seed from provider on first load
+    final liveAsync = ref.watch(activeLivestreamsProvider);
+    liveAsync.whenData((data) {
+      if (!_initialised && data.isNotEmpty) {
+        _streams = List.from(data);
+        _initialised = true;
+      }
+    });
+
+    if (!_initialised && liveAsync is AsyncLoading) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
+
+    if (_streams.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.live_tv, size: 64, color: AppColors.textMuted),
+            const SizedBox(height: 16),
+            const Text('No one is live right now',
+                style: TextStyle(
+                    color: AppColors.textSecondary, fontSize: 16)),
+            const SizedBox(height: 8),
+            const Text('Be the first to go live!',
+                style: TextStyle(
+                    color: AppColors.textMuted, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.75,
+      ),
+      itemCount: _streams.length,
+      itemBuilder: (_, i) => _LiveCard(
+          stream: _streams[i],
+          onTap: () => widget.onOpen(_streams[i])),
     );
   }
 }
+
 
 class _LiveCard extends StatelessWidget {
   final LivestreamModel stream;

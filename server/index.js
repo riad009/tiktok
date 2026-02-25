@@ -27,6 +27,7 @@ const io = new SocketServer(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
   transports: ['websocket', 'polling'],
 });
+app.set('io', io); // expose to routes via req.app.get('io')
 
 io.on('connection', (socket) => {
   // join a stream room
