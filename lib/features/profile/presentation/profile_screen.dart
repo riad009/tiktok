@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_theme.dart';
@@ -26,6 +27,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  int _selectedTab = 0;
 
   @override
   void initState() {
@@ -51,7 +53,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final userAsync = ref.watch(userProfileProvider(_targetUid));
     final videosAsync = ref.watch(userVideosProvider(_targetUid));
 
-    return Scaffold(
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.screenGradient),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: userAsync.when(
           data: (u) => Text('@${u?.username ?? ''}'),
@@ -60,8 +65,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         ),
         actions: [
           if (_isOwnProfile)
-            IconButton(
-              icon: const Icon(Icons.logout_rounded),
+            CupertinoButton(
+              padding: const EdgeInsets.only(right: 8),
+              child: const Icon(CupertinoIcons.square_arrow_right, color: AppColors.textMuted, size: 22),
               onPressed: () {
                 AuthPersistence.clear();
                 ref.read(authUserProvider.notifier).state = null;
@@ -78,21 +84,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             headerSliverBuilder: (_, __) => [
               SliverToBoxAdapter(child: _buildHeader(user)),
               SliverToBoxAdapter(
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorColor: AppColors.primary,
-                  indicatorWeight: 3,
-                  labelColor: AppColors.primary,
-                  unselectedLabelColor: AppColors.textSecondary,
-                  isScrollable: false,
-                  labelPadding: EdgeInsets.zero,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.video_collection_rounded, size: 22)),
-                    Tab(icon: Icon(Icons.photo_library_rounded, size: 22)),
-                    Tab(icon: Icon(Icons.favorite_rounded, size: 22)),
-                    Tab(icon: Icon(Icons.repeat_rounded, size: 22)),
-                    Tab(icon: Icon(Icons.live_tv_rounded, size: 22)),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: CupertinoSlidingSegmentedControl<int>(
+                    groupValue: _selectedTab,
+                    backgroundColor: AppColors.iosTertiaryGroupedBg,
+                    thumbColor: AppColors.darkBorder,
+                    children: const {
+                      0: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.film, size: 18)),
+                      1: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.photo, size: 18)),
+                      2: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.heart_fill, size: 18)),
+                      3: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.arrow_2_squarepath, size: 18)),
+                      4: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.video_camera, size: 18)),
+                    },
+                    onValueChanged: (val) {
+                      setState(() {
+                        _selectedTab = val!;
+                        _tabController.animateTo(val);
+                      });
+                    },
+                  ),
                 ),
               ),
             ],
@@ -104,11 +115,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   data: (videos) {
                     final reels = videos.where((v) => v.videoUrl.isNotEmpty).toList();
                     if (reels.isEmpty) {
-                      return _buildEmptyTab(Icons.video_collection_outlined, 'No reels yet');
+                      return _buildEmptyTab(CupertinoIcons.film, 'No reels yet');
                     }
                     return _buildPostsGrid(reels);
                   },
-                  loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                  loading: () => const Center(child: CupertinoActivityIndicator(radius: 12)),
                   error: (e, _) => Center(child: Text('Error: $e')),
                 ),
 
@@ -127,8 +138,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        loading: () => const Center(child: CupertinoActivityIndicator(radius: 14)),
         error: (e, _) => Center(child: Text('Error: $e')),
+      ),
       ),
     );
   }
@@ -159,12 +171,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 ? Image.network(displayUrl, fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
                       color: AppColors.darkCard,
-                      child: const Center(child: Icon(Icons.broken_image, color: AppColors.textMuted)),
+                      child: const Center(child: Icon(CupertinoIcons.photo_fill, color: AppColors.textMuted)),
                     ))
                 : Container(
                     color: AppColors.darkCard,
                     child: const Center(
-                      child: Icon(Icons.videocam_rounded, color: AppColors.textMuted))),
+                      child: Icon(CupertinoIcons.videocam_fill, color: AppColors.textMuted))),
             // Overlay gradient
             Positioned.fill(
               child: DecoratedBox(
@@ -183,7 +195,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               child: Row(
                 children: [
                   Icon(
-                    v.videoUrl.isNotEmpty ? Icons.play_arrow_rounded : Icons.photo,
+                    v.videoUrl.isNotEmpty ? CupertinoIcons.play_fill : CupertinoIcons.photo,
                     color: Colors.white, size: 14),
                   const SizedBox(width: 2),
                   Text(_formatCount(v.viewsCount),
@@ -197,7 +209,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 right: 4,
                 child: Row(
                   children: [
-                    const Icon(Icons.favorite, color: Colors.white, size: 12),
+                    const Icon(CupertinoIcons.heart_fill, color: Colors.white, size: 12),
                     const SizedBox(width: 2),
                     Text(_formatCount(v.likesCount),
                       style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
@@ -216,25 +228,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       data: (videos) {
         final photos = videos.where((v) => v.imageUrl.isNotEmpty).toList();
         if (photos.isEmpty) {
-          return _buildEmptyTab(Icons.photo_library_outlined, 'No photos yet');
+          return _buildEmptyTab(CupertinoIcons.photo, 'No photos yet');
         }
         return _buildPostsGrid(photos);
       },
-      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      loading: () => const Center(child: CupertinoActivityIndicator(radius: 12)),
       error: (e, _) => Center(child: Text('Error: $e')),
     );
   }
 
   Widget _buildLikedTab() {
-    return _buildEmptyTab(Icons.favorite_border, 'Liked posts will appear here');
+    return _buildEmptyTab(CupertinoIcons.heart, 'Liked posts will appear here');
   }
 
   Widget _buildRepostsTab() {
-    return _buildEmptyTab(Icons.repeat_rounded, 'Reposts will appear here');
+    return _buildEmptyTab(CupertinoIcons.arrow_2_squarepath, 'Reposts will appear here');
   }
 
   Widget _buildLivestreamsTab() {
-    return _buildEmptyTab(Icons.live_tv_outlined, 'Past livestreams will appear here');
+    return _buildEmptyTab(CupertinoIcons.video_camera, 'Past livestreams will appear here');
   }
 
   Widget _buildEmptyTab(IconData icon, String text) {
@@ -305,15 +317,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
                     onPressed: () => _editProfile(user),
-                    icon: const Icon(Icons.edit_rounded, size: 16),
-                    label: const Text('Edit Profile'),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.darkBorder),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                    child: Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.iosTertiaryGroupedBg,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(CupertinoIcons.pencil, size: 16, color: AppColors.textPrimary),
+                          SizedBox(width: 6),
+                          Text('Edit Profile', style: TextStyle(
+                            color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -322,26 +344,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             const SizedBox(height: 16),
             // Creator Tools menu
             _buildMenuTile(
-              icon: Icons.analytics_outlined,
+              icon: CupertinoIcons.chart_bar_alt_fill,
               label: 'Creator Dashboard',
               color: AppColors.secondary,
               onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const CreatorDashboardScreen())),
+                  CupertinoPageRoute(builder: (_) => const CreatorDashboardScreen())),
             ),
             _buildMenuTile(
-              icon: Icons.monetization_on_outlined,
+              icon: CupertinoIcons.money_dollar_circle,
               label: 'Monetization',
               color: AppColors.goldBadge,
               onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const MonetizationScreen())),
+                  CupertinoPageRoute(builder: (_) => const MonetizationScreen())),
             ),
             if (user.isAdmin)
               _buildMenuTile(
-                icon: Icons.admin_panel_settings,
+                icon: CupertinoIcons.shield_lefthalf_fill,
                 label: 'Admin Panel',
                 color: AppColors.error,
                 onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AdminPanelScreen())),
+                    CupertinoPageRoute(builder: (_) => const AdminPanelScreen())),
               ),
           ]
           else
@@ -351,7 +373,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   child: isFollowing.when(
                     data: (following) => GradientButton(
                       text: following ? 'Following' : 'Follow',
-                      icon: following ? Icons.check_rounded : Icons.person_add_rounded,
+                      icon: following ? CupertinoIcons.checkmark_alt : CupertinoIcons.person_add,
                       onPressed: () => _toggleFollow(following),
                     ),
                     loading: () => const SizedBox(height: 44),
@@ -359,16 +381,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   ),
                 ),
                 const SizedBox(width: 12),
-                OutlinedButton.icon(
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
                   onPressed: () => _startChat(user),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
-                  label: const Text('Message'),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.darkBorder),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 10, horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.iosTertiaryGroupedBg,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(CupertinoIcons.chat_bubble, size: 16, color: AppColors.textPrimary),
+                        SizedBox(width: 6),
+                        Text('Message', style: TextStyle(
+                          color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -408,7 +437,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             Text(label, style: const TextStyle(
               color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
             const Spacer(),
-            Icon(Icons.chevron_right, color: AppColors.textMuted, size: 20),
+            Icon(CupertinoIcons.chevron_right, color: AppColors.textMuted, size: 18),
           ],
         ),
       ),
@@ -436,7 +465,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
 
     if (convo != null && mounted) {
-      Navigator.of(context).push(MaterialPageRoute(
+      Navigator.of(context).push(CupertinoPageRoute(
         builder: (_) => ChatScreen(
           conversationId: convo.id,
           otherUserName: otherUser.displayName,
@@ -491,7 +520,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             const SizedBox(height: 20),
             GradientButton(
               text: 'Save',
-              icon: Icons.check_rounded,
+              icon: CupertinoIcons.checkmark_alt,
               onPressed: () {
                 ref.read(userRepositoryProvider).updateProfile(
                   user.uid,

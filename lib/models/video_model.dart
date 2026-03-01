@@ -11,6 +11,10 @@ class VideoModel {
   final int likesCount;
   final int commentsCount;
   final int viewsCount;
+  final String musicTitle;
+  final String musicArtist;
+  final String musicCoverUrl;
+  final String musicPreviewUrl;
   final DateTime createdAt;
 
   VideoModel({
@@ -26,6 +30,10 @@ class VideoModel {
     this.likesCount = 0,
     this.commentsCount = 0,
     this.viewsCount = 0,
+    this.musicTitle = '',
+    this.musicArtist = '',
+    this.musicCoverUrl = '',
+    this.musicPreviewUrl = '',
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -43,6 +51,10 @@ class VideoModel {
       likesCount: map['likesCount'] ?? 0,
       commentsCount: map['commentsCount'] ?? 0,
       viewsCount: map['viewsCount'] ?? 0,
+      musicTitle: map['musicTitle'] ?? '',
+      musicArtist: map['musicArtist'] ?? '',
+      musicCoverUrl: map['musicCoverUrl'] ?? '',
+      musicPreviewUrl: map['musicPreviewUrl'] ?? '',
       createdAt: map['createdAt'] != null
           ? DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -62,6 +74,10 @@ class VideoModel {
       'likesCount': likesCount,
       'commentsCount': commentsCount,
       'viewsCount': viewsCount,
+      'musicTitle': musicTitle,
+      'musicArtist': musicArtist,
+      'musicCoverUrl': musicCoverUrl,
+      'musicPreviewUrl': musicPreviewUrl,
       'createdAt': createdAt.toIso8601String(),
     };
   }

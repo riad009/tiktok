@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/providers/providers.dart';
@@ -12,6 +14,7 @@ import 'features/liked/presentation/liked_screen.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/livestream/presentation/livestream_screen.dart';
 import 'features/music/presentation/music_screen.dart';
+import 'features/splash/presentation/splash_screen.dart';
 
 class ArtistcaseApp extends StatelessWidget {
   const ArtistcaseApp({super.key});
@@ -22,7 +25,7 @@ class ArtistcaseApp extends StatelessWidget {
       title: 'Artistcase',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const AuthGate(),
+      home: const SplashScreen(),
     );
   }
 }
@@ -67,7 +70,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
             children: [
               ArtistcaseLogo(size: 64, showText: true),
               SizedBox(height: 24),
-              CircularProgressIndicator(color: AppColors.primary),
+              CupertinoActivityIndicator(radius: 14, color: AppColors.primary),
             ],
           ),
         ),
@@ -111,78 +114,79 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _showLogoActions() {
-    showModalBottomSheet(
+    showCupertinoModalPopup(
       context: context,
-      backgroundColor: AppColors.darkCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: AppColors.darkBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const ArtistcaseLogo(size: 48, showText: true),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: Container(
-                  width: 44, height: 44,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const ArtistcaseLogo(size: 36, showText: true),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(context, CupertinoPageRoute(builder: (_) => const UploadScreen()));
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 32, height: 32,
                   decoration: BoxDecoration(
                     gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
+                  child: const Icon(CupertinoIcons.add, color: Colors.white, size: 18),
                 ),
-                title: const Text('Upload Content', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Post a video, reel, or image', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadScreen()));
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  width: 44, height: 44,
+                const SizedBox(width: 12),
+                const Text('Upload Content', style: TextStyle(fontSize: 17)),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(context, CupertinoPageRoute(builder: (_) => const MusicScreen()));
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 32, height: 32,
                   decoration: BoxDecoration(
                     color: AppColors.secondary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.music_note_rounded, color: AppColors.secondary, size: 24),
+                  child: Icon(CupertinoIcons.music_note, color: AppColors.secondary, size: 18),
                 ),
-                title: const Text('Music', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Browse trending tracks', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MusicScreen()));
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  width: 44, height: 44,
+                const SizedBox(width: 12),
+                const Text('Music', style: TextStyle(fontSize: 17)),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(context, CupertinoPageRoute(builder: (_) => const LivestreamScreen()));
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 32, height: 32,
                   decoration: BoxDecoration(
                     color: AppColors.liveRed.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.live_tv_rounded, color: AppColors.liveRed, size: 24),
+                  child: const Icon(CupertinoIcons.video_camera_solid, color: AppColors.liveRed, size: 18),
                 ),
-                title: const Text('Go Live', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Start a livestream', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const LivestreamScreen()));
-                },
-              ),
-            ],
+                const SizedBox(width: 12),
+                const Text('Go Live', style: TextStyle(fontSize: 17)),
+              ],
+            ),
           ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: false,
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
         ),
       ),
     );
@@ -212,7 +216,7 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// ── Custom Bottom Navigation Bar ─────────────────────────────────
+// ── iOS-style Bottom Navigation Bar ──────────────────────────────
 class _ArtistcaseBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
@@ -226,98 +230,100 @@ class _ArtistcaseBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.navBarBg,
-        border: Border(
-          top: BorderSide(color: AppColors.darkBorder, width: 0.5),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Bottom bar with 4 nav items (+ gap in center)
-              Row(
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.navBarBg.withValues(alpha: 0.92),
+            border: const Border(
+              top: BorderSide(color: Color(0xFF38383A), width: 0.33),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 50,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  _buildNavItem(
-                    index: 0,
-                    icon: Icons.home_outlined,
-                    activeIcon: Icons.home_rounded,
-                    label: 'Home',
-                  ),
-                  _buildNavItem(
-                    index: 1,
-                    icon: Icons.chat_bubble_outline_rounded,
-                    activeIcon: Icons.chat_bubble_rounded,
-                    label: 'Chat',
-                  ),
-                  // Center gap for logo
-                  const Expanded(
-                    child: SizedBox(),
-                  ),
-                  _buildNavItem(
-                    index: 3,
-                    icon: Icons.favorite_border_rounded,
-                    activeIcon: Icons.favorite_rounded,
-                    label: 'Liked',
-                  ),
-                  _buildNavItem(
-                    index: 4,
-                    icon: Icons.person_outline_rounded,
-                    activeIcon: Icons.person_rounded,
-                    label: 'Profile',
-                  ),
-                ],
-              ),
-              // Raised center logo button
-              Positioned(
-                left: 0,
-                right: 0,
-                top: -22,
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () => onTap(2),
-                    child: Container(
-                      width: 62,
-                      height: 62,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: AppColors.navLogoGradient,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.5),
-                            blurRadius: 16,
-                            spreadRadius: 2,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                  Row(
+                    children: [
+                      _buildNavItem(
+                        index: 0,
+                        icon: CupertinoIcons.house,
+                        activeIcon: CupertinoIcons.house_fill,
+                        label: 'Home',
                       ),
-                      padding: const EdgeInsets.all(3),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.darkBg,
-                        ),
-                        padding: const EdgeInsets.all(3),
+                      _buildNavItem(
+                        index: 1,
+                        icon: CupertinoIcons.chat_bubble,
+                        activeIcon: CupertinoIcons.chat_bubble_fill,
+                        label: 'Chat',
+                      ),
+                      // Center gap for logo
+                      const Expanded(child: SizedBox()),
+                      _buildNavItem(
+                        index: 3,
+                        icon: CupertinoIcons.heart,
+                        activeIcon: CupertinoIcons.heart_fill,
+                        label: 'Liked',
+                      ),
+                      _buildNavItem(
+                        index: 4,
+                        icon: CupertinoIcons.person,
+                        activeIcon: CupertinoIcons.person_fill,
+                        label: 'Profile',
+                      ),
+                    ],
+                  ),
+                  // Raised center logo button
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: -20,
+                    child: Center(
+                      child: GestureDetector(
+                        onTap: () => onTap(2),
                         child: Container(
-                          decoration: const BoxDecoration(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: AppColors.primaryGradient,
+                            gradient: AppColors.navLogoGradient,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.4),
+                                blurRadius: 12,
+                                spreadRadius: 1,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                           ),
-                          child: const Center(
-                            child: ArtistcaseLogo(size: 30),
+                          padding: const EdgeInsets.all(2.5),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black,
+                            ),
+                            padding: const EdgeInsets.all(2.5),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: AppColors.primaryGradient,
+                              ),
+                              child: const Center(
+                                child: ArtistcaseLogo(size: 26),
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -340,16 +346,17 @@ class _ArtistcaseBottomNav extends StatelessWidget {
           children: [
             Icon(
               isActive ? activeIcon : icon,
-              size: 24,
+              size: 22,
               color: isActive ? AppColors.primary : AppColors.textMuted,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                 color: isActive ? AppColors.primary : AppColors.textMuted,
+                letterSpacing: -0.24,
               ),
             ),
           ],

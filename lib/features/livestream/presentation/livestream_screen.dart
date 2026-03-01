@@ -74,7 +74,10 @@ class _LivestreamScreenState extends ConsumerState<LivestreamScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.screenGradient),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -132,6 +135,7 @@ class _LivestreamScreenState extends ConsumerState<LivestreamScreen>
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -609,7 +613,8 @@ class _LiveNowTabState extends ConsumerState<_LiveNowTab> {
   // Socket.io connection (lazy — initialised after first build)
   dynamic _socket;
 
-  static const _socketUrl = 'http://localhost:3001';
+  // Auto-detect socket URL from the page origin (universal port)
+  static String get _socketUrl => Uri.base.origin;
 
   @override
   void initState() {

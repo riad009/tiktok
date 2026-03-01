@@ -103,6 +103,19 @@ final isLikedProvider = StreamProvider.family<bool, String>((ref, videoId) {
   return Stream.value(false);
 });
 
+// ── Liked Videos (from PostgreSQL API) ───────────────────────────
+final likedVideosProvider = FutureProvider<List<VideoModel>>((ref) async {
+  final uid = ref.watch(currentUidProvider);
+  if (uid == null) return [];
+  final allPosts = await ApiService.getFeed();
+  final liked = <VideoModel>[];
+  for (final post in allPosts) {
+    final isLiked = await ApiService.isLiked(post.id, uid);
+    if (isLiked) liked.add(post);
+  }
+  return liked;
+});
+
 // ── Comments (from PostgreSQL API) ──────────────────────────────
 final commentsProvider = FutureProvider.family<List<CommentModel>, String>((ref, videoId) async {
   return ApiService.getComments(videoId);
@@ -193,8 +206,9 @@ final allClipsProvider = FutureProvider<List<ClipModel>>((ref) async {
 
 // ── Group Conversations (from PostgreSQL API) ──────────────────
 final groupConversationsProvider = FutureProvider<List<ConversationModel>>((ref) async {
-  // Group conversations not yet implemented in API
-  return [];
+  final uid = ref.watch(currentUidProvider);
+  if (uid == null) return [];
+  return ApiService.getGroupConversations(uid);
 });
 
 // ── Blocked Users ───────────────────────────────────────────────

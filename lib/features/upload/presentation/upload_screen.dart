@@ -8,6 +8,7 @@ import '../../../core/widgets/gradient_button.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/services/api_service.dart';
 import 'video_editor_screen.dart';
+import 'package:just_audio/just_audio.dart';
 
 class UploadScreen extends ConsumerStatefulWidget {
   const UploadScreen({super.key});
@@ -28,11 +29,23 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   bool _isUploading = false;
   String _postType = 'text'; // 'text', 'image', 'url', 'video'
 
+  // Music state
+  String _musicTitle = '';
+  String _musicArtist = '';
+  String _musicCoverUrl = '';
+  String _musicPreviewUrl = '';
+  final _musicSearchController = TextEditingController();
+  List<Map<String, dynamic>> _musicResults = [];
+  bool _searchingMusic = false;
+  AudioPlayer? _audioPlayer;
+
   @override
   void dispose() {
     _captionController.dispose();
     _hashtagController.dispose();
     _imageUrlController.dispose();
+    _musicSearchController.dispose();
+    _audioPlayer?.dispose();
     super.dispose();
   }
 

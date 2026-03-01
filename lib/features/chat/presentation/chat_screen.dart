@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
@@ -18,6 +20,11 @@ class ConversationsScreen extends ConsumerWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Container(
+          decoration: const BoxDecoration(gradient: AppColors.screenGradient),
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Messages'),
           actions: [
@@ -139,6 +146,8 @@ class ConversationsScreen extends ConsumerWidget {
               error: (e, _) => Center(child: Text('Error: $e')),
             ),
           ],
+        ),
+      ),
         ),
       ),
     );
@@ -480,15 +489,15 @@ class _AllUsersSheetState extends State<_AllUsersSheet> {
 }
 
 // ── Create Group Sheet ──────────────────────────────────────────
-class _CreateGroupSheet extends StatefulWidget {
+class _CreateGroupSheet extends ConsumerStatefulWidget {
   final String currentUid;
   const _CreateGroupSheet({required this.currentUid});
 
   @override
-  State<_CreateGroupSheet> createState() => _CreateGroupSheetState();
+  ConsumerState<_CreateGroupSheet> createState() => _CreateGroupSheetState();
 }
 
-class _CreateGroupSheetState extends State<_CreateGroupSheet> {
+class _CreateGroupSheetState extends ConsumerState<_CreateGroupSheet> {
   final _nameController = TextEditingController();
   final Set<String> _selectedUserIds = {};
   List<UserModel> _users = [];
@@ -527,6 +536,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
     if (!mounted) return;
 
     if (convo != null) {
+      ref.invalidate(groupConversationsProvider);
       Navigator.pop(context); // close sheet
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => ChatScreen(
@@ -1008,7 +1018,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final messagesAsync = ref.watch(messagesProvider(widget.conversationId));
     final currentUid = ref.read(currentUidProvider) ?? '';
 
-    return Scaffold(
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.splashGradient),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded),
@@ -1088,47 +1101,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _buildInput(),
         ],
       ),
+      ),
     );
   }
 
   Widget _buildInput() {
     return Container(
       padding: EdgeInsets.only(
-          left: 8, right: 8, top: 10,
+          left: 12, right: 12, top: 10,
           bottom: MediaQuery.of(context).padding.bottom + 10),
-      decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.darkBorder))),
+      decoration: BoxDecoration(
+        color: AppColors.navBarBg.withValues(alpha: 0.8),
+        border: Border(top: BorderSide(color: AppColors.darkBorder.withValues(alpha: 0.3))),
+      ),
       child: Row(
         children: [
-          // Media button
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline, color: AppColors.accent),
-            onPressed: _showMediaPicker,
-          ),
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                  color: AppColors.darkCard,
-                  borderRadius: BorderRadius.circular(24)),
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
               child: TextField(
                 controller: _msgController,
                 onSubmitted: (_) => _sendMessage(),
-                style: const TextStyle(fontFamily: 'Inter', letterSpacing: 0.2),
-                decoration: const InputDecoration(
-                    hintText: 'Message...',
-                    hintStyle: TextStyle(fontFamily: 'Inter', letterSpacing: 0.3),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+                style: GoogleFonts.inter(fontSize: 15, color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Type a message...',
+                  hintStyle: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 15),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            decoration: const BoxDecoration(
-                gradient: AppColors.primaryGradient, shape: BoxShape.circle),
-            child: IconButton(
-                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                onPressed: _sendMessage),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _sendMessage,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: AppColors.purpleGradient,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('Send', style: GoogleFonts.inter(
+                color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+            ),
           ),
         ],
       ),
@@ -1136,121 +1155,107 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-// ── Chat Bubble ─────────────────────────────────────────────────
+// ── Chat Bubble with green-highlighted words (matching screenshot) ──
 class _ChatBubble extends StatelessWidget {
   final MessageModel message;
   final bool isMe;
   final String? senderName;
   const _ChatBubble({required this.message, required this.isMe, this.senderName});
 
+  // Colors for sender names (cycle through)
+  static const _senderColors = [
+    Color(0xFFFF6B8A), // pink
+    Color(0xFF4ade80), // green
+    Color(0xFFFFA726), // orange
+    Color(0xFF42A5F5), // blue
+    Color(0xFFAB47BC), // purple
+    Color(0xFFFF7043), // deep orange
+  ];
+
+  Color _getSenderColor(String name) {
+    final idx = name.hashCode.abs() % _senderColors.length;
+    return _senderColors[idx];
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: Column(
-          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (senderName != null) ...[
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 4),
-                child: Text(
-                  senderName!,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accent,
+    final timeStr = '${message.timestamp.hour}:${message.timestamp.minute.toString().padLeft(2, '0')} ${message.timestamp.hour >= 12 ? 'PM' : 'AM'}';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // Sender name + message
+          Row(
+            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!isMe && senderName != null) ...[
+                Text(
+                  '${senderName!}: ',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _getSenderColor(senderName!),
                   ),
                 ),
+              ] else if (isMe) ...[
+                Text(
+                  'You: ',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+              Flexible(
+                child: _buildHighlightedText(message.text),
               ),
             ],
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-              decoration: BoxDecoration(
-                gradient: isMe ? AppColors.primaryGradient : null,
-                color: isMe ? null : AppColors.darkCard,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 16),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // Media indicator
-                  if (message.mediaType.isNotEmpty) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            message.mediaType == 'image' ? Icons.photo :
-                            message.mediaType == 'video' ? Icons.videocam :
-                            message.mediaType == 'audio' ? Icons.headphones : Icons.insert_drive_file,
-                            color: Colors.white.withValues(alpha: 0.6), size: 32,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            message.mediaType.toUpperCase(),
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                  if (message.text.isNotEmpty)
-                    Text(message.text, style: const TextStyle(fontSize: 15, height: 1.4, fontFamily: 'Inter', letterSpacing: 0.2)),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${message.timestamp.hour}:${message.timestamp.minute.toString().padLeft(2, '0')}',
-                        style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : AppColors.textMuted),
-                      ),
-                      if (isMe) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          message.isRead ? Icons.done_all_rounded : Icons.done_rounded,
-                          size: 14,
-                          color: message.isRead ? const Color(0xFF4ade80) : Colors.white54,
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
+          ),
+          const SizedBox(height: 3),
+          // Timestamp
+          Padding(
+            padding: EdgeInsets.only(left: isMe ? 0 : 4, right: isMe ? 4 : 0),
+            child: Text(
+              timeStr,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: AppColors.textMuted,
               ),
             ),
-            // Reactions display
-            if (message.reactions.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.darkCard,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  message.reactions.entries.map((e) => '${e.key} ${e.value}').join(' '),
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+
+  /// Builds text with each word in a green-highlighted box (matching screenshot)
+  Widget _buildHighlightedText(String text) {
+    if (text.isEmpty) return const SizedBox.shrink();
+    final words = text.split(' ');
+    return Wrap(
+      spacing: 3,
+      runSpacing: 3,
+      children: words.map((word) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.chatHighlight,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            word,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.white,
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

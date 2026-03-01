@@ -1,6 +1,7 @@
 require('dotenv').config(); // MUST be first — env vars needed by Mux client in routes
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
@@ -225,15 +226,15 @@ app.get('/api/feed', async (_, res) => {
 // POST /api/posts
 app.post('/api/posts', async (req, res) => {
     try {
-        const { userId, caption, videoUrl, thumbnailUrl, imageUrl, hashtags } = req.body;
+        const { userId, caption, videoUrl, thumbnailUrl, imageUrl, hashtags, musicTitle, musicArtist, musicCoverUrl, musicPreviewUrl } = req.body;
         if (!userId) return res.status(400).json({ error: 'userId is required' });
 
         const id = uuid();
         const result = await pool.query(
-            `INSERT INTO posts (id, user_id, caption, video_url, thumbnail_url, image_url, hashtags)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO posts (id, user_id, caption, video_url, thumbnail_url, image_url, hashtags, music_title, music_artist, music_cover_url, music_preview_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-            [id, userId, caption || '', videoUrl || '', thumbnailUrl || '', imageUrl || '', hashtags || []]
+            [id, userId, caption || '', videoUrl || '', thumbnailUrl || '', imageUrl || '', hashtags || [], musicTitle || '', musicArtist || '', musicCoverUrl || '', musicPreviewUrl || '']
         );
 
         // increment user's post count
@@ -726,6 +727,10 @@ function mapPost(row) {
         likesCount: row.likes_count || 0,
         commentsCount: row.comments_count || 0,
         viewsCount: row.views_count || 0,
+        musicTitle: row.music_title || '',
+        musicArtist: row.music_artist || '',
+        musicCoverUrl: row.music_cover_url || '',
+        musicPreviewUrl: row.music_preview_url || '',
         createdAt: row.created_at,
     };
 }
@@ -796,6 +801,10 @@ async function autoMigrate() {
         await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''`);
         await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS created_by TEXT DEFAULT ''`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false`);
+        await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS music_title TEXT DEFAULT ''`);
+        await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS music_artist TEXT DEFAULT ''`);
+        await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS music_cover_url TEXT DEFAULT ''`);
+        await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS music_preview_url TEXT DEFAULT ''`);
         await pool.query(`CREATE TABLE IF NOT EXISTS reports (
             id TEXT PRIMARY KEY,
             reporter_id TEXT,
@@ -828,15 +837,28 @@ async function autoMigrate() {
             );
             console.log('✅ Admin user seeded (admin@gmail.com / 123456)');
         } else {
-            // Ensure existing admin has correct role
-            await pool.query("UPDATE users SET role = 'admin', is_verified = true WHERE email = 'admin@gmail.com'");
+            // Ensure existing admin has correct role and password
+            const hash = await bcrypt.hash('123456', 10);
+            await pool.query(
+                "UPDATE users SET role = 'admin', is_verified = true, password_hash = $1 WHERE email = 'admin@gmail.com'",
+                [hash]
+            );
         }
     } catch (e) {
         console.warn('Admin seed note:', e.message);
     }
 }
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 650;
+
+// ── Serve Flutter web build (universal port — API + UI on same origin) ───
+const webBuildPath = path.join(__dirname, '..', 'build', 'web');
+app.use(express.static(webBuildPath));
+// SPA fallback: serve index.html for any non-API route so Flutter routing works
+app.get(/^(?!\/api).*/, (req, res) => {
+    res.sendFile(path.join(webBuildPath, 'index.html'));
+});
+
 autoMigrate().then(() => {
     httpServer.listen(PORT, () => {
         console.log(`🚀 Artistcase API  →  http://localhost:${PORT}`);

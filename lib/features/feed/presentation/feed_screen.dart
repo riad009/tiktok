@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
@@ -89,7 +90,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         leading: GestureDetector(
           onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const LivestreamScreen()),
+              CupertinoPageRoute(builder: (_) => const LivestreamScreen()),
             );
           },
           child: Padding(
@@ -134,7 +135,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             child: GestureDetector(
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SearchScreen()),
+                  CupertinoPageRoute(builder: (_) => const SearchScreen()),
                 );
               },
               child: Container(
@@ -144,7 +145,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   color: Colors.white.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
+              child: const Icon(CupertinoIcons.search, color: Colors.white, size: 18),
               ),
             ),
           ),
@@ -157,7 +158,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.video_library_outlined,
+                  Icon(CupertinoIcons.film,
                       size: 64, color: AppColors.textMuted),
                   SizedBox(height: 16),
                   Text('No posts yet. Be the first to post!',
@@ -207,23 +208,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           );
         },
         loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+          child: CupertinoActivityIndicator(radius: 14, color: AppColors.primary),
         ),
         error: (e, _) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline,
+              const Icon(CupertinoIcons.exclamationmark_circle,
                   size: 48, color: AppColors.textMuted),
               const SizedBox(height: 12),
               Text('Error loading feed',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
+              CupertinoButton(
                 onPressed: () => ref.invalidate(feedVideosProvider),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.refresh, size: 18, color: AppColors.primary),
+                    SizedBox(width: 6),
+                    Text('Retry'),
+                  ],
+                ),
               ),
             ],
           ),
@@ -296,6 +303,7 @@ class _PostCardState extends ConsumerState<_PostCard>
     if (!_isLiked) {
       await ApiService.likePost(widget.video.id, uid);
       if (mounted) setState(() { _isLiked = true; _likesCount++; });
+      ref.invalidate(likedVideosProvider);
     }
   }
 
@@ -309,6 +317,7 @@ class _PostCardState extends ConsumerState<_PostCard>
       await ApiService.likePost(widget.video.id, uid);
       if (mounted) setState(() { _isLiked = true; _likesCount++; });
     }
+    ref.invalidate(likedVideosProvider);
   }
 
   @override
@@ -394,8 +403,8 @@ class _PostCardState extends ConsumerState<_PostCard>
                 // Like
                 _ActionButton(
                   icon: _isLiked
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
+                      ? CupertinoIcons.heart_fill
+                      : CupertinoIcons.heart,
                   label: _formatCount(_likesCount),
                   color: _isLiked ? Colors.redAccent : Colors.white,
                   onTap: _toggleLike,
@@ -404,7 +413,7 @@ class _PostCardState extends ConsumerState<_PostCard>
 
                 // Comment
                 _ActionButton(
-                  icon: Icons.chat_bubble_rounded,
+                  icon: CupertinoIcons.chat_bubble_fill,
                   label: _formatCount(video.commentsCount),
                   onTap: () => _showComments(context, video.id),
                 ),
@@ -412,20 +421,20 @@ class _PostCardState extends ConsumerState<_PostCard>
 
                 // Share
                 _ActionButton(
-                  icon: Icons.reply_rounded,
+                  icon: CupertinoIcons.arrowshape_turn_up_right_fill,
                   label: 'Share',
                   onTap: () {},
-                  mirrorX: true,
+                  mirrorX: false,
                 ),
                 const SizedBox(height: 20),
 
                 // Share to Story
                 _ActionButton(
-                  icon: Icons.auto_stories_rounded,
+                  icon: CupertinoIcons.book_fill,
                   label: 'Story',
                   color: AppColors.accent,
                   onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
+                    Navigator.of(context).push(CupertinoPageRoute(
                       builder: (_) => const CreateStoryScreen(),
                     ));
                   },
@@ -434,7 +443,7 @@ class _PostCardState extends ConsumerState<_PostCard>
 
                 // Swipes (renamed from Views)
                 _ActionButton(
-                  icon: Icons.swipe_rounded,
+                  icon: CupertinoIcons.eye_fill,
                   label: _formatCount(video.viewsCount),
                   onTap: () {},
                 ),
@@ -528,7 +537,7 @@ class _PostCardState extends ConsumerState<_PostCard>
                   opacity: _heartOpacity.value,
                   child: Transform.scale(
                     scale: _heartScale.value,
-                    child: const Icon(Icons.favorite_rounded,
+            child: const Icon(Icons.favorite_rounded,
                         size: 110,
                         color: Colors.redAccent,
                         shadows: [Shadow(blurRadius: 20, color: Colors.black)]),
@@ -557,7 +566,7 @@ class _PostCardState extends ConsumerState<_PostCard>
         ),
       ),
       child: const Center(
-        child: Icon(Icons.article_rounded, size: 70, color: Colors.white12),
+        child: Icon(CupertinoIcons.doc_text, size: 70, color: Colors.white12),
       ),
     );
   }
@@ -612,7 +621,7 @@ class _UserAvatar extends StatelessWidget {
             decoration: const BoxDecoration(
                 gradient: AppColors.primaryGradient,
                 shape: BoxShape.circle),
-            child: const Icon(Icons.add, size: 12, color: Colors.white),
+            child: const Icon(CupertinoIcons.add, size: 12, color: Colors.white),
           ),
         ),
       ],
@@ -751,7 +760,7 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
             Expanded(
               child: _loading
                   ? const Center(
-                      child: CircularProgressIndicator(color: AppColors.primary))
+                      child: CupertinoActivityIndicator(radius: 14, color: AppColors.primary))
                   : _comments.isEmpty
                       ? const Center(
                           child: Text('No comments yet — be the first!',
@@ -849,7 +858,7 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
                           decoration: const BoxDecoration(
                               gradient: AppColors.primaryGradient,
                               shape: BoxShape.circle),
-                          child: const Icon(Icons.send_rounded,
+                          child: const Icon(CupertinoIcons.paperplane_fill,
                               color: Colors.white, size: 18),
                         ),
                       ),
@@ -859,7 +868,7 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const Icon(Icons.music_note_rounded, size: 14, color: Colors.white70),
+                      const Icon(CupertinoIcons.music_note, size: 14, color: Colors.white70),
                       const SizedBox(width: 6),
                       const Flexible(
                         child: Text(

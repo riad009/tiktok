@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import '../../models/user_model.dart';
 import '../../models/video_model.dart';
 import '../../models/message_model.dart';
@@ -9,10 +9,17 @@ import '../../models/report_model.dart';
 
 /// HTTP client that talks to the Express API.
 class ApiService {
-  // In debug: local server; in release: same-origin (Vercel)
-  static const String _baseUrl = kReleaseMode
-      ? '/api'
-      : 'http://localhost:3001/api';
+  /// Universal base URL — auto-detected from the browser origin on web,
+  /// so changing the server port never breaks the client.
+  static String get _baseUrl {
+    if (kIsWeb) {
+      // Same-origin: works in production (Vercel) AND local dev when the
+      // Express server serves the Flutter web build on the same port.
+      return '${Uri.base.origin}/api';
+    }
+    // Mobile emulator / device — keep a sensible default
+    return 'http://10.0.2.2:650/api';
+  }
 
   /// Public accessor for the API base URL (used by music search proxy etc.)
   static String get baseUrl => _baseUrl;
@@ -101,6 +108,10 @@ class ApiService {
     String thumbnailUrl = '',
     String imageUrl = '',
     List<String> hashtags = const [],
+    String musicTitle = '',
+    String musicArtist = '',
+    String musicCoverUrl = '',
+    String musicPreviewUrl = '',
   }) async {
     final res = await http.post(
       Uri.parse('$_baseUrl/posts'),
@@ -112,6 +123,10 @@ class ApiService {
         'thumbnailUrl': thumbnailUrl,
         'imageUrl': imageUrl,
         'hashtags': hashtags,
+        'musicTitle': musicTitle,
+        'musicArtist': musicArtist,
+        'musicCoverUrl': musicCoverUrl,
+        'musicPreviewUrl': musicPreviewUrl,
       }),
     );
     if (res.statusCode == 201) {
@@ -181,6 +196,15 @@ class ApiService {
     if (res.statusCode == 200) {
       final List list = jsonDecode(res.body);
       return list.map((j) => _parseConversation(j, userId)).toList();
+    }
+    return [];
+  }
+
+  static Future<List<ConversationModel>> getGroupConversations(String userId) async {
+    final res = await http.get(Uri.parse('$_baseUrl/conversations/$userId?group=true'));
+    if (res.statusCode == 200) {
+      final List list = jsonDecode(res.body);
+      return list.map((j) => _parseGroupConversation(j)).toList();
     }
     return [];
   }
@@ -384,8 +408,26 @@ class ApiService {
       commentsCount: j['commentsCount'] ?? 0,
       viewsCount: j['viewsCount'] ?? 0,
       imageUrl: j['imageUrl'] ?? '',
+      musicTitle: j['musicTitle'] ?? '',
+      musicArtist: j['musicArtist'] ?? '',
+      musicCoverUrl: j['musicCoverUrl'] ?? '',
+      musicPreviewUrl: j['musicPreviewUrl'] ?? '',
       createdAt: j['createdAt'] != null ? DateTime.tryParse(j['createdAt'].toString()) : null,
     );
+  }
+
+  /// Search music via Deezer proxy
+  static Future<List<Map<String, dynamic>>> searchMusic(String query) async {
+    if (query.trim().isEmpty) return [];
+    final res = await http.get(
+      Uri.parse('$_baseUrl/music/search?q=${Uri.encodeComponent(query.trim())}'),
+    );
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      final List data = body['data'] ?? [];
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
   }
 
   static CommentModel _parseComment(Map<String, dynamic> j) {
