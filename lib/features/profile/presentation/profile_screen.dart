@@ -1,7 +1,8 @@
-import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gradient_button.dart';
@@ -24,23 +25,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  int _selectedTab = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 5, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String get _targetUid =>
       widget.userId ?? ref.read(currentUidProvider) ?? '';
 
@@ -53,356 +38,447 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final userAsync = ref.watch(userProfileProvider(_targetUid));
     final videosAsync = ref.watch(userVideosProvider(_targetUid));
 
-    return Container(
-      decoration: const BoxDecoration(gradient: AppColors.screenGradient),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: userAsync.when(
-          data: (u) => Text('@${u?.username ?? ''}'),
-          loading: () => const SizedBox.shrink(),
-          error: (_, _s) => const Text('Profile'),
-        ),
-        actions: [
-          if (_isOwnProfile)
-            CupertinoButton(
-              padding: const EdgeInsets.only(right: 8),
-              child: const Icon(CupertinoIcons.square_arrow_right, color: AppColors.textMuted, size: 22),
-              onPressed: () {
-                AuthPersistence.clear();
-                ref.read(authUserProvider.notifier).state = null;
-              },
-            ),
-        ],
-      ),
+    return Scaffold(
+      backgroundColor: AppColors.darkBg,
+      extendBodyBehindAppBar: true,
       body: userAsync.when(
         data: (user) {
           if (user == null) {
-            return const Center(child: Text('User not found'));
+            return const Center(
+                child: Text('User not found',
+                    style: TextStyle(color: AppColors.textMuted)));
           }
-          return NestedScrollView(
-            headerSliverBuilder: (_, __) => [
-              SliverToBoxAdapter(child: _buildHeader(user)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: CupertinoSlidingSegmentedControl<int>(
-                    groupValue: _selectedTab,
-                    backgroundColor: AppColors.iosTertiaryGroupedBg,
-                    thumbColor: AppColors.darkBorder,
-                    children: const {
-                      0: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.film, size: 18)),
-                      1: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.photo, size: 18)),
-                      2: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.heart_fill, size: 18)),
-                      3: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.arrow_2_squarepath, size: 18)),
-                      4: Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: Icon(CupertinoIcons.video_camera, size: 18)),
-                    },
-                    onValueChanged: (val) {
-                      setState(() {
-                        _selectedTab = val!;
-                        _tabController.animateTo(val);
-                      });
-                    },
+          return CustomScrollView(
+            slivers: [
+              // ── Banner + Avatar header ─────────────────────
+              SliverToBoxAdapter(child: _buildBannerHeader(user)),
+
+              // ── Stats row ──────────────────────────────────
+              SliverToBoxAdapter(child: _buildStatsRow(user)),
+
+              // ── Action buttons ─────────────────────────────
+              SliverToBoxAdapter(child: _buildActions(user)),
+
+              // ── Photo grid ─────────────────────────────────
+              videosAsync.when(
+                data: (videos) {
+                  final photos =
+                      videos.where((v) => v.imageUrl.isNotEmpty).toList();
+                  if (photos.isEmpty) {
+                    return SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(CupertinoIcons.photo,
+                                size: 48, color: AppColors.textMuted),
+                            const SizedBox(height: 12),
+                            Text('No posts yet',
+                                style: GoogleFonts.inter(
+                                    color: AppColors.textMuted,
+                                    fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  return _buildPhotoGrid(photos);
+                },
+                loading: () => const SliverFillRemaining(
+                    child: Center(
+                        child: CupertinoActivityIndicator(
+                            radius: 12, color: AppColors.primary))),
+                error: (e, _) => SliverFillRemaining(
+                    child: Center(child: Text('Error: $e'))),
+              ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            ],
+          );
+        },
+        loading: () => const Center(
+            child:
+                CupertinoActivityIndicator(radius: 14, color: AppColors.primary)),
+        error: (e, _) => Center(
+            child: Text('Error: $e',
+                style: const TextStyle(color: AppColors.textMuted))),
+      ),
+    );
+  }
+
+  // ── Banner + Avatar ────────────────────────────────────────────
+  Widget _buildBannerHeader(UserModel user) {
+    final bannerUrl =
+        'https://picsum.photos/seed/${user.username}/800/400';
+    final avatarUrl = user.photoUrl.isNotEmpty
+        ? user.photoUrl
+        : 'https://i.pravatar.cc/150?u=${user.username}';
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // Banner image
+        SizedBox(
+          height: 220,
+          width: double.infinity,
+          child: Image.network(
+            bannerUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primary.withOpacity(0.4),
+                    AppColors.darkBg,
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Gradient overlay
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  AppColors.darkBg.withOpacity(0.6),
+                  AppColors.darkBg,
+                ],
+                stops: const [0.3, 0.7, 1.0],
+              ),
+            ),
+          ),
+        ),
+
+        // Top bar: back + menu
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 8,
+          left: 16,
+          right: 16,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (Navigator.of(context).canPop())
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.arrow_back,
+                        color: Colors.white, size: 20),
                   ),
+                )
+              else
+                const SizedBox(width: 40),
+              GestureDetector(
+                onTap: () => _showProfileMenu(user),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.more_horiz,
+                      color: Colors.white, size: 20),
                 ),
               ),
             ],
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                // ── Reels tab ────────────────────────────
-                videosAsync.when(
-                  data: (videos) {
-                    final reels = videos.where((v) => v.videoUrl.isNotEmpty).toList();
-                    if (reels.isEmpty) {
-                      return _buildEmptyTab(CupertinoIcons.film, 'No reels yet');
-                    }
-                    return _buildPostsGrid(reels);
-                  },
-                  loading: () => const Center(child: CupertinoActivityIndicator(radius: 12)),
-                  error: (e, _) => Center(child: Text('Error: $e')),
-                ),
+          ),
+        ),
 
-                // ── Photos tab ───────────────────────────
-                _buildPhotosTab(),
-
-                // ── Liked tab ────────────────────────────
-                _buildLikedTab(),
-
-                // ── Reposts tab ──────────────────────────
-                _buildRepostsTab(),
-
-                // ── Livestreams tab ──────────────────────
-                _buildLivestreamsTab(),
-              ],
-            ),
-          );
-        },
-        loading: () => const Center(child: CupertinoActivityIndicator(radius: 14)),
-        error: (e, _) => Center(child: Text('Error: $e')),
-      ),
-      ),
-    );
-  }
-
-  // ── Post Grid builder ──────────────────────────────────────────
-
-  Widget _buildPostsGrid(List<VideoModel> posts) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(2),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 9 / 16,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
-      ),
-      itemCount: posts.length,
-      itemBuilder: (_, i) {
-        final v = posts[i];
-        final displayUrl = v.imageUrl.isNotEmpty
-            ? v.imageUrl
-            : v.thumbnailUrl.isNotEmpty
-                ? v.thumbnailUrl
-                : '';
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            displayUrl.isNotEmpty
-                ? Image.network(displayUrl, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: AppColors.darkCard,
-                      child: const Center(child: Icon(CupertinoIcons.photo_fill, color: AppColors.textMuted)),
-                    ))
-                : Container(
-                    color: AppColors.darkCard,
-                    child: const Center(
-                      child: Icon(CupertinoIcons.videocam_fill, color: AppColors.textMuted))),
-            // Overlay gradient
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.center,
-                    colors: [Colors.black.withValues(alpha: 0.5), Colors.transparent],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 4,
-              left: 4,
-              child: Row(
-                children: [
-                  Icon(
-                    v.videoUrl.isNotEmpty ? CupertinoIcons.play_fill : CupertinoIcons.photo,
-                    color: Colors.white, size: 14),
-                  const SizedBox(width: 2),
-                  Text(_formatCount(v.viewsCount),
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-            if (v.likesCount > 0)
-              Positioned(
-                bottom: 4,
-                right: 4,
-                child: Row(
+        // Avatar + Name + Bio
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Column(
+            children: [
+              // Avatar with online dot
+              GestureDetector(
+                onTap: _isOwnProfile ? _changePhoto : null,
+                child: Stack(
                   children: [
-                    const Icon(CupertinoIcons.heart_fill, color: Colors.white, size: 12),
-                    const SizedBox(width: 2),
-                    Text(_formatCount(v.likesCount),
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: AppColors.primary, width: 3),
+                      ),
+                      child: CircleAvatar(
+                        radius: 48,
+                        backgroundColor: AppColors.darkCard,
+                        backgroundImage: NetworkImage(avatarUrl),
+                      ),
+                    ),
+                    // Green online dot
+                    Positioned(
+                      bottom: 6,
+                      right: 6,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4CAF50),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: AppColors.darkBg, width: 3),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-          ],
-        );
-      },
+              const SizedBox(height: 12),
+              // Name
+              Text(
+                (user.displayName.isNotEmpty &&
+                        !user.displayName.contains('@'))
+                    ? user.displayName
+                    : '@${user.username}',
+                style: GoogleFonts.inter(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // Bio / subtitle
+              Text(
+                user.bio.isNotEmpty
+                    ? user.bio
+                    : 'Dj / Producer / Artist',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildPhotosTab() {
-    final videosAsync = ref.watch(userVideosProvider(_targetUid));
-    return videosAsync.when(
-      data: (videos) {
-        final photos = videos.where((v) => v.imageUrl.isNotEmpty).toList();
-        if (photos.isEmpty) {
-          return _buildEmptyTab(CupertinoIcons.photo, 'No photos yet');
-        }
-        return _buildPostsGrid(photos);
-      },
-      loading: () => const Center(child: CupertinoActivityIndicator(radius: 12)),
-      error: (e, _) => Center(child: Text('Error: $e')),
-    );
-  }
-
-  Widget _buildLikedTab() {
-    return _buildEmptyTab(CupertinoIcons.heart, 'Liked posts will appear here');
-  }
-
-  Widget _buildRepostsTab() {
-    return _buildEmptyTab(CupertinoIcons.arrow_2_squarepath, 'Reposts will appear here');
-  }
-
-  Widget _buildLivestreamsTab() {
-    return _buildEmptyTab(CupertinoIcons.video_camera, 'Past livestreams will appear here');
-  }
-
-  Widget _buildEmptyTab(IconData icon, String text) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  // ── Stats Row ──────────────────────────────────────────────────
+  Widget _buildStatsRow(UserModel user) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 24, 40, 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Icon(icon, size: 48, color: AppColors.textMuted),
-          const SizedBox(height: 12),
-          Text(text, style: const TextStyle(color: AppColors.textMuted, fontSize: 14)),
+          _buildStat(_formatCount(user.followingCount), 'Following'),
+          // Vertical divider
+          Container(
+            width: 1,
+            height: 32,
+            color: AppColors.darkBorder,
+          ),
+          _buildStat(_formatCount(user.followersCount), 'Followers'),
+          Container(
+            width: 1,
+            height: 32,
+            color: AppColors.darkBorder,
+          ),
+          _buildStat(_formatCount(user.postsCount), 'Post'),
         ],
       ),
     );
   }
 
-  // ── Header ─────────────────────────────────────────────────────
+  Widget _buildStat(String value, String label) {
+    return Column(
+      children: [
+        Text(value,
+            style: GoogleFonts.inter(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Colors.white)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: GoogleFonts.inter(
+                fontSize: 13, color: AppColors.textSecondary)),
+      ],
+    );
+  }
 
-  Widget _buildHeader(UserModel user) {
-    final isFollowing = _isOwnProfile
-        ? const AsyncValue<bool>.data(false)
-        : ref.watch(isFollowingProvider(_targetUid));
-
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          // Avatar
-          GestureDetector(
-            onTap: _isOwnProfile ? _changePhoto : null,
-            child: CircleAvatar(
-              radius: 44,
-              backgroundColor: AppColors.darkCard,
-              backgroundImage:
-                  user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
-              child: user.photoUrl.isEmpty
-                  ? Text(user.displayName.isNotEmpty
-                      ? user.displayName[0].toUpperCase()
-                      : '?',
-                      style: const TextStyle(
-                          fontSize: 32, fontWeight: FontWeight.w800))
-                  : null,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(user.displayName,
-              style: const TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w800)),
-          if (user.bio.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(user.bio,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 14, height: 1.4)),
-          ],
-          const SizedBox(height: 20),
-          // Stats
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _StatColumn(label: 'Following', count: user.followingCount),
-              _StatColumn(label: 'Followers', count: user.followersCount),
-              _StatColumn(label: 'Likes', count: user.postsCount),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Action buttons
-          if (_isOwnProfile) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: () => _editProfile(user),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppColors.iosTertiaryGroupedBg,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(CupertinoIcons.pencil, size: 16, color: AppColors.textPrimary),
-                          SizedBox(width: 6),
-                          Text('Edit Profile', style: TextStyle(
-                            color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
+  // ── Action Buttons ─────────────────────────────────────────────
+  Widget _buildActions(UserModel user) {
+    if (_isOwnProfile) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: Column(
+          children: [
+            // Edit Profile button
+            GestureDetector(
+              onTap: () => _editProfile(user),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, Color(0xFF9B6DFF)],
                   ),
+                  borderRadius: BorderRadius.circular(28),
                 ),
-              ],
+                child: Center(
+                  child: Text('Edit Profile',
+                      style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white)),
+                ),
+              ),
             ),
-            const SizedBox(height: 16),
-            // Creator Tools menu
+            const SizedBox(height: 12),
+            // Creator tools
             _buildMenuTile(
               icon: CupertinoIcons.chart_bar_alt_fill,
               label: 'Creator Dashboard',
               color: AppColors.secondary,
-              onTap: () => Navigator.push(context,
-                  CupertinoPageRoute(builder: (_) => const CreatorDashboardScreen())),
+              onTap: () => Navigator.push(
+                  context,
+                  CupertinoPageRoute(
+                      builder: (_) =>
+                          const CreatorDashboardScreen())),
             ),
             _buildMenuTile(
               icon: CupertinoIcons.money_dollar_circle,
               label: 'Monetization',
               color: AppColors.goldBadge,
-              onTap: () => Navigator.push(context,
-                  CupertinoPageRoute(builder: (_) => const MonetizationScreen())),
+              onTap: () => Navigator.push(
+                  context,
+                  CupertinoPageRoute(
+                      builder: (_) =>
+                          const MonetizationScreen())),
             ),
             if (user.isAdmin)
               _buildMenuTile(
                 icon: CupertinoIcons.shield_lefthalf_fill,
                 label: 'Admin Panel',
                 color: AppColors.error,
-                onTap: () => Navigator.push(context,
-                    CupertinoPageRoute(builder: (_) => const AdminPanelScreen())),
+                onTap: () => Navigator.push(
+                    context,
+                    CupertinoPageRoute(
+                        builder: (_) =>
+                            const AdminPanelScreen())),
               ),
-          ]
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: isFollowing.when(
-                    data: (following) => GradientButton(
-                      text: following ? 'Following' : 'Follow',
-                      icon: following ? CupertinoIcons.checkmark_alt : CupertinoIcons.person_add,
-                      onPressed: () => _toggleFollow(following),
+          ],
+        ),
+      );
+    }
+
+    // Other user profile
+    final isFollowing = ref.watch(isFollowingProvider(_targetUid));
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: isFollowing.when(
+              data: (following) => GestureDetector(
+                onTap: () => _toggleFollow(following),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    gradient: following
+                        ? null
+                        : const LinearGradient(
+                            colors: [
+                              AppColors.primary,
+                              Color(0xFF9B6DFF)
+                            ],
+                          ),
+                    color: following
+                        ? AppColors.darkCard
+                        : null,
+                    borderRadius: BorderRadius.circular(28),
+                    border: following
+                        ? Border.all(color: AppColors.darkBorder)
+                        : null,
+                  ),
+                  child: Center(
+                    child: Text(
+                      following ? 'Following' : 'Follow',
+                      style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white),
                     ),
-                    loading: () => const SizedBox(height: 44),
-                    error: (_, _s) => const SizedBox(height: 44),
                   ),
                 ),
-                const SizedBox(width: 12),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () => _startChat(user),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.iosTertiaryGroupedBg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(CupertinoIcons.chat_bubble, size: 16, color: AppColors.textPrimary),
-                        SizedBox(width: 6),
-                        Text('Message', style: TextStyle(
-                          color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
+              loading: () => const SizedBox(height: 48),
+              error: (_, __) => const SizedBox(height: 48),
             ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () => _startChat(user),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  vertical: 14, horizontal: 20),
+              decoration: BoxDecoration(
+                color: AppColors.darkCard,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: AppColors.darkBorder),
+              ),
+              child: const Icon(CupertinoIcons.chat_bubble_fill,
+                  color: Colors.white, size: 20),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  // ── Photo Grid (3-column with varied heights) ──────────────────
+  SliverPadding _buildPhotoGrid(List<VideoModel> photos) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
+          childAspectRatio: 0.75,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final v = photos[index];
+            // Vary height for masonry-style look
+            final isLarge = index % 5 == 0;
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: isLarge ? 0.65 : 0.85,
+                child: Image.network(
+                  v.imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: AppColors.darkCard,
+                    child: const Center(
+                      child: Icon(CupertinoIcons.photo_fill,
+                          color: AppColors.textMuted),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+          childCount: photos.length,
+        ),
       ),
     );
   }
@@ -417,7 +493,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: AppColors.darkCard,
           borderRadius: BorderRadius.circular(12),
@@ -426,19 +503,67 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         child: Row(
           children: [
             Container(
-              width: 36, height: 36,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
+                color: color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: color, size: 20),
             ),
             const SizedBox(width: 12),
-            Text(label, style: const TextStyle(
-              color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
+            Text(label,
+                style: GoogleFonts.inter(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14)),
             const Spacer(),
-            Icon(CupertinoIcons.chevron_right, color: AppColors.textMuted, size: 18),
+            const Icon(CupertinoIcons.chevron_right,
+                color: AppColors.textMuted, size: 18),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ── Actions ────────────────────────────────────────────────────
+
+  void _showProfileMenu(UserModel user) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        actions: [
+          if (_isOwnProfile) ...[
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _editProfile(user);
+              },
+              child: const Text('Edit Profile'),
+            ),
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.pop(ctx);
+                AuthPersistence.clear();
+                ref.read(authUserProvider.notifier).state = null;
+              },
+              child: const Text('Log Out'),
+            ),
+          ] else ...[
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Report User'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Block User'),
+            ),
+          ],
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
         ),
       ),
     );
@@ -476,24 +601,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   void _changePhoto() async {
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
+    final image = await picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 512);
     if (image == null) return;
 
     final uid = ref.read(currentUidProvider);
     if (uid == null) return;
-    await ref.read(userRepositoryProvider).uploadProfilePhoto(uid, File(image.path));
+
+    // Read image bytes and encode as base64 (works on web + mobile)
+    final bytes = await image.readAsBytes();
+    final base64Str = base64Encode(bytes);
+
+    final updatedUser = await ref
+        .read(userRepositoryProvider)
+        .uploadProfilePhoto(uid, base64Str);
+
+    if (updatedUser != null && mounted) {
+      // Update auth state so avatar refreshes everywhere
+      ref.read(authUserProvider.notifier).state = updatedUser;
+      ref.invalidate(userProfileProvider(uid));
+      ref.invalidate(allUsersProvider);
+    }
   }
 
   void _editProfile(UserModel user) {
-    final nameController = TextEditingController(text: user.displayName);
-    final bioController = TextEditingController(text: user.bio);
+    final nameController =
+        TextEditingController(text: user.displayName);
+    final bioController =
+        TextEditingController(text: user.bio);
 
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.darkCard,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 20,
@@ -504,30 +647,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Edit Profile',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text('Edit Profile',
+                style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white)),
             const SizedBox(height: 20),
             TextField(
               controller: nameController,
-              decoration: const InputDecoration(labelText: 'Display Name'),
+              style: const TextStyle(color: Colors.white),
+              decoration:
+                  const InputDecoration(labelText: 'Display Name'),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: bioController,
               maxLines: 3,
+              style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(labelText: 'Bio'),
             ),
             const SizedBox(height: 20),
             GradientButton(
               text: 'Save',
               icon: CupertinoIcons.checkmark_alt,
-              onPressed: () {
-                ref.read(userRepositoryProvider).updateProfile(
-                  user.uid,
-                  displayName: nameController.text.trim(),
-                  bio: bioController.text.trim(),
-                );
-                Navigator.pop(ctx);
+              onPressed: () async {
+                final updated = await ref.read(userRepositoryProvider).updateProfile(
+                      user.uid,
+                      displayName: nameController.text.trim(),
+                      bio: bioController.text.trim(),
+                    );
+                if (updated != null) {
+                  ref.read(authUserProvider.notifier).state = updated;
+                  ref.invalidate(userProfileProvider(user.uid));
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
               },
             ),
           ],
@@ -537,35 +690,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   String _formatCount(int count) {
-    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
-    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1)}M';
+    }
+    if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
     return '$count';
-  }
-}
-
-class _StatColumn extends StatelessWidget {
-  final String label;
-  final int count;
-  const _StatColumn({required this.label, required this.count});
-
-  String get _formatted {
-    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
-    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
-    return '$count';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(_formatted,
-            style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(
-                color: AppColors.textSecondary, fontSize: 13)),
-      ],
-    );
   }
 }

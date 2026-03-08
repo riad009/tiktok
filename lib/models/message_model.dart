@@ -1,4 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+DateTime _parseDate(dynamic value) {
+  if (value == null) return DateTime.now();
+  if (value is DateTime) return value;
+  if (value is String) {
+    return DateTime.tryParse(value) ?? DateTime.now();
+  }
+  return DateTime.now();
+}
 
 class MessageModel {
   final String id;
@@ -33,7 +40,7 @@ class MessageModel {
       mediaType: map['mediaType'] ?? '',
       reactions: Map<String, String>.from(map['reactions'] ?? {}),
       timestamp:
-          (map['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          _parseDate(map['timestamp']),
       isRead: map['isRead'] ?? false,
     );
   }
@@ -46,7 +53,7 @@ class MessageModel {
       'mediaUrl': mediaUrl,
       'mediaType': mediaType,
       'reactions': reactions,
-      'timestamp': Timestamp.fromDate(timestamp),
+      'timestamp': timestamp.toIso8601String(),
       'isRead': isRead,
     };
   }
@@ -85,7 +92,7 @@ class ConversationModel {
       participants: List<String>.from(map['participants'] ?? []),
       lastMessage: map['lastMessage'] ?? '',
       lastMessageTime:
-          (map['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          _parseDate(map['lastMessageTime']),
       participantNames:
           Map<String, String>.from(map['participantNames'] ?? {}),
       participantPhotos:
@@ -102,7 +109,7 @@ class ConversationModel {
     return {
       'participants': participants,
       'lastMessage': lastMessage,
-      'lastMessageTime': Timestamp.fromDate(lastMessageTime),
+      'lastMessageTime': lastMessageTime.toIso8601String(),
       'participantNames': participantNames,
       'participantPhotos': participantPhotos,
       'isGroupChat': isGroupChat,

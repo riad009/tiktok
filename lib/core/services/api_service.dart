@@ -9,20 +9,34 @@ import '../../models/report_model.dart';
 
 /// HTTP client that talks to the Express API.
 class ApiService {
-  /// Universal base URL — auto-detected from the browser origin on web,
-  /// so changing the server port never breaks the client.
+  /// Production Vercel URL — used for all remote/deployed access.
+  static const String _vercelUrl = 'https://artistcase.vercel.app/api';
+
+  /// Universal base URL — uses Vercel in production, auto-detects on web.
   static String get _baseUrl {
     if (kIsWeb) {
-      // Same-origin: works in production (Vercel) AND local dev when the
-      // Express server serves the Flutter web build on the same port.
-      return '${Uri.base.origin}/api';
+      // In release mode (Vercel / same-origin), use the browser origin.
+      if (kReleaseMode) {
+        return '${Uri.base.origin}/api';
+      }
+      // Dev: use the deployed Vercel backend so no local server is needed.
+      // To use a local server instead, uncomment the line below:
+      // return 'http://localhost:650/api';
+      return _vercelUrl;
     }
-    // Mobile emulator / device — keep a sensible default
-    return 'http://10.0.2.2:650/api';
+    // Mobile emulator / device — use the deployed Vercel backend
+    return _vercelUrl;
   }
 
   /// Public accessor for the API base URL (used by music search proxy etc.)
   static String get baseUrl => _baseUrl;
+
+  /// Socket.IO URL (server root, without /api path)
+  static String get socketUrl {
+    final url = _baseUrl;
+    if (url.endsWith('/api')) return url.substring(0, url.length - 4);
+    return url;
+  }
 
   static String? _token;
   static void setToken(String? t) => _token = t;
@@ -85,6 +99,36 @@ class ApiService {
 
   static Future<UserModel?> getUser(String id) async {
     final res = await http.get(Uri.parse('$_baseUrl/users/$id'));
+    if (res.statusCode == 200) {
+      return _parseUser(jsonDecode(res.body));
+    }
+    return null;
+  }
+
+  /// Update user profile fields (displayName, bio, photoUrl).
+  static Future<UserModel?> updateUserProfile(String uid, {String? displayName, String? bio, String? photoUrl}) async {
+    final body = <String, dynamic>{};
+    if (displayName != null) body['displayName'] = displayName;
+    if (bio != null) body['bio'] = bio;
+    if (photoUrl != null) body['photoUrl'] = photoUrl;
+    final res = await http.put(
+      Uri.parse('$_baseUrl/users/$uid/profile'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    if (res.statusCode == 200) {
+      return _parseUser(jsonDecode(res.body));
+    }
+    return null;
+  }
+
+  /// Upload a profile photo as base64, returns the updated user.
+  static Future<UserModel?> uploadUserPhoto(String uid, String base64Image) async {
+    final res = await http.put(
+      Uri.parse('$_baseUrl/users/$uid/photo'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'imageBase64': base64Image}),
+    );
     if (res.statusCode == 200) {
       return _parseUser(jsonDecode(res.body));
     }
@@ -426,6 +470,27 @@ class ApiService {
       final body = jsonDecode(res.body);
       final List data = body['data'] ?? [];
       return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Fetch trending/chart music from Deezer
+  static Future<List<Map<String, dynamic>>> getTrendingMusic({int limit = 50}) async {
+    final res = await http.get(Uri.parse('$_baseUrl/music/trending?limit=$limit'));
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      final List data = body['data'] ?? [];
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Fetch notifications for a user
+  static Future<List<Map<String, dynamic>>> getNotifications(String userId) async {
+    final res = await http.get(Uri.parse('$_baseUrl/notifications/$userId'));
+    if (res.statusCode == 200) {
+      final List list = jsonDecode(res.body);
+      return list.cast<Map<String, dynamic>>();
     }
     return [];
   }

@@ -2,26 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_persistence.dart';
 import '../../../app.dart';
-import 'signup_screen.dart';
+import 'login_screen.dart';
 
-class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+class SignupScreen extends ConsumerStatefulWidget {
+  const SignupScreen({super.key});
 
   @override
-  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen>
+class _SignupScreenState extends ConsumerState<SignupScreen>
     with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   bool _obscurePassword = true;
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _phoneController = TextEditingController();
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -39,8 +41,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _phoneController.dispose();
     _fadeController.dispose();
     super.dispose();
   }
@@ -52,19 +57,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Future<void> _handleLogin() async {
+  Future<void> _handleSignup() async {
+    final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
-      _showError('Please fill in all fields');
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      _showError('Please fill in all required fields');
+      return;
+    }
+    if (password != confirmPassword) {
+      _showError('Passwords do not match');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final user = await ApiService.login(email: email, password: password);
+      final username = name.toLowerCase().replaceAll(' ', '_');
+      final user = await ApiService.signup(
+        username: username,
+        email: email,
+        password: password,
+        displayName: name,
+      );
       if (user != null) {
         ref.read(authUserProvider.notifier).state = user;
         await AuthPersistence.saveUser(user);
@@ -101,7 +118,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
                 children: [
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 30),
                   // Logo icon
                   Container(
                     width: 80,
@@ -135,84 +152,63 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ),
                   ),
                   const SizedBox(height: 6),
-                  // Welcome Back !
-                  RichText(
-                    text: TextSpan(
-                      style: GoogleFonts.inter(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.white,
-                      ),
-                      children: [
-                        const TextSpan(text: 'Welcome '),
-                        TextSpan(
-                          text: 'Back',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w800),
-                        ),
-                        const TextSpan(text: ' !'),
-                      ],
+                  Text(
+                    'Create Your Account',
+                    style: GoogleFonts.inter(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 60),
+                  const SizedBox(height: 40),
+
+                  // Name field
+                  _buildUnderlineField(
+                    controller: _nameController,
+                    label: 'Name',
+                    hint: 'Your full name',
+                  ),
+                  const SizedBox(height: 24),
 
                   // Email field
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Enter your email',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildField(
+                  _buildUnderlineField(
                     controller: _emailController,
+                    label: 'Email',
                     hint: 'your@email.com',
                     keyboardType: TextInputType.emailAddress,
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
 
                   // Password field
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Password',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildField(
+                  _buildUnderlineField(
                     controller: _passwordController,
+                    label: 'Password',
                     hint: '••••••••••••',
                     isPassword: true,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 24),
 
-                  // Forgot password
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: () {},
-                      child: Text(
-                        'Forgot password',
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: Colors.white.withOpacity(0.7),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
+                  // Confirm Password
+                  _buildUnderlineField(
+                    controller: _confirmPasswordController,
+                    label: 'Confirm Password',
+                    hint: 'Re-enter your password',
+                    isPassword: true,
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Phone number
+                  _buildUnderlineField(
+                    controller: _phoneController,
+                    label: 'Phone number',
+                    hint: '+1234567890',
+                    keyboardType: TextInputType.phone,
                   ),
                   const SizedBox(height: 50),
 
-                  // Sign In button
+                  // Sign up button
                   GestureDetector(
-                    onTap: _isLoading ? null : _handleLogin,
+                    onTap: _isLoading ? null : _handleSignup,
                     child: Container(
                       width: double.infinity,
                       height: 54,
@@ -238,7 +234,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 ),
                               )
                             : Text(
-                                'Sign in',
+                                'Sign up',
                                 style: GoogleFonts.inter(
                                   fontSize: 17,
                                   fontWeight: FontWeight.w700,
@@ -250,15 +246,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                   const SizedBox(height: 20),
 
-                  // Have an account? Sign up
+                  // Already have an account? Log in
                   GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        CupertinoPageRoute(
-                          builder: (_) => const SignupScreen(),
-                        ),
-                      );
-                    },
+                    onTap: () => Navigator.pop(context),
                     child: RichText(
                       text: TextSpan(
                         style: GoogleFonts.inter(
@@ -266,9 +256,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           fontSize: 14,
                         ),
                         children: [
-                          const TextSpan(text: 'Have an account? '),
+                          const TextSpan(text: 'Already have an account?'),
                           TextSpan(
-                            text: 'Sign up',
+                            text: 'Log in',
                             style: GoogleFonts.inter(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
@@ -288,101 +278,60 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildField({
+  Widget _buildUnderlineField({
     required TextEditingController controller,
+    required String label,
     required String hint,
     bool isPassword = false,
     TextInputType? keyboardType,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(27),
-        border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.2),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: isPassword ? _obscurePassword : false,
-        keyboardType: keyboardType,
-        style: GoogleFonts.inter(fontSize: 15, color: Colors.white),
-        onSubmitted: (_) => _handleLogin(),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: GoogleFonts.inter(
-            color: Colors.white.withOpacity(0.5),
-            fontSize: 15,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.white.withOpacity(0.8),
           ),
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          suffixIcon: isPassword
-              ? IconButton(
-                  icon: Icon(
-                    _obscurePassword
-                        ? CupertinoIcons.eye
-                        : CupertinoIcons.eye_slash,
-                    color: Colors.white.withOpacity(0.5),
-                    size: 20,
-                  ),
-                  onPressed: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
-                )
-              : null,
         ),
-      ),
+        TextField(
+          controller: controller,
+          obscureText: isPassword ? _obscurePassword : false,
+          keyboardType: keyboardType,
+          style: GoogleFonts.inter(fontSize: 15, color: Colors.white),
+          onSubmitted: (_) => _handleSignup(),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: GoogleFonts.inter(
+              color: Colors.white.withOpacity(0.4),
+              fontSize: 15,
+            ),
+            border: InputBorder.none,
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white, width: 1.5),
+            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            suffixIcon: isPassword
+                ? IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? CupertinoIcons.eye
+                          : CupertinoIcons.eye_slash,
+                      color: Colors.white.withOpacity(0.5),
+                      size: 20,
+                    ),
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
+                  )
+                : null,
+          ),
+        ),
+      ],
     );
   }
-}
-
-/// Reusable Artistcase logo icon painter
-class ArtistcaseIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Briefcase body
-    final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * 0.1, size.height * 0.25, size.width * 0.8, size.height * 0.55),
-      const Radius.circular(5),
-    );
-    final briefcasePaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawRRect(bodyRect, briefcasePaint);
-
-    // Handle
-    final handlePaint = Paint()
-      ..color = const Color(0xFF6D28D9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-    final handlePath = Path()
-      ..moveTo(size.width * 0.3, size.height * 0.25)
-      ..quadraticBezierTo(size.width * 0.3, size.height * 0.1, size.width * 0.5, size.height * 0.1)
-      ..quadraticBezierTo(size.width * 0.7, size.height * 0.1, size.width * 0.7, size.height * 0.25);
-    canvas.drawPath(handlePath, handlePaint);
-
-    // Triangle
-    final triPaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFFFF6B8A), Color(0xFFFF4466)],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(Rect.fromLTWH(size.width * 0.3, size.height * 0.35, size.width * 0.4, size.height * 0.3));
-    final triPath = Path()
-      ..moveTo(size.width * 0.5, size.height * 0.35)
-      ..lineTo(size.width * 0.66, size.height * 0.63)
-      ..lineTo(size.width * 0.34, size.height * 0.63)
-      ..close();
-    final triBorder = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeJoin = StrokeJoin.round;
-    canvas.drawPath(triPath, triPaint);
-    canvas.drawPath(triPath, triBorder);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

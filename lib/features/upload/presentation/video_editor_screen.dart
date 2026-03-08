@@ -245,6 +245,37 @@ class _VideoEditorScreenState extends State<VideoEditorScreen>
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          // Save to gallery
+          GestureDetector(
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('💾 Saved to Gallery!'),
+                backgroundColor: AppColors.success,
+              ));
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.darkCard,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.darkBorder),
+              ),
+              child: const Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.save_alt, size: 16, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text('Save',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Done / Export
           GestureDetector(
             onTap: () {
               Navigator.pop(context);

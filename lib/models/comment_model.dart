@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class CommentModel {
   final String id;
   final String userId;
@@ -27,7 +25,7 @@ class CommentModel {
       userPhotoUrl: map['userPhotoUrl'] ?? '',
       text: map['text'] ?? '',
       likesCount: map['likesCount'] ?? 0,
-      createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: _parseDate(map['createdAt']),
     );
   }
 
@@ -38,7 +36,13 @@ class CommentModel {
       'userPhotoUrl': userPhotoUrl,
       'text': text,
       'likesCount': likesCount,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.toIso8601String(),
     };
   }
+}
+
+DateTime _parseDate(dynamic value) {
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+  return DateTime.now();
 }

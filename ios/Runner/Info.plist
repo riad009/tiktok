@@ -66,5 +66,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Artistcase needs camera access to record and upload videos</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Artistcase needs microphone access to record audio for videos and livestreams</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Artistcase needs photo library access to select videos and images for upload</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Artistcase needs permission to save videos to your photo library</string>
 </dict>
 </plist>

@@ -15,9 +15,8 @@ class AppConstants {
   static const int searchPageSize = 20;
   static const int chatPageSize = 30;
 
-  // Admin
-  static const String adminEmail = 'admin@gmail.com';
-  static const String adminPassword = '123456';
+  // Admin (role is checked server-side via user.role)
+  // No hardcoded credentials — admin is assigned by role in the database
 
   // Firebase Collections
   static const String usersCollection = 'users';

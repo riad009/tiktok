@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../services/api_service.dart';
 import '../services/auth_persistence.dart';
 import '../services/user_repository.dart';
@@ -30,7 +29,6 @@ final adminRepositoryProvider = Provider<AdminRepository>((ref) => AdminReposito
 final monetizationRepositoryProvider = Provider<MonetizationRepository>((ref) => MonetizationRepository());
 
 // ── Auth ─────────────────────────────────────────────────────────
-final firebaseAuthProvider = Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
 
 /// Holds the currently logged-in user (null = not logged in)
 final authUserProvider = StateProvider<UserModel?>((ref) => null);
@@ -93,14 +91,22 @@ final allUsersProvider = FutureProvider<List<UserModel>>((ref) async {
   return ApiService.getUsers();
 });
 
-// ── Is Following (stub — always false for now) ──────────────────
+// ── Is Following (uses API) ──────────────────────────────────────
 final isFollowingProvider = StreamProvider.family<bool, String>((ref, targetUid) {
-  return Stream.value(false);
+  final currentUid = ref.watch(currentUidProvider);
+  if (currentUid == null) return Stream.value(false);
+  return ref.read(userRepositoryProvider).isFollowingStream(currentUid, targetUid);
 });
 
-// ── Is Liked (stub — always false for now) ──────────────────────
-final isLikedProvider = StreamProvider.family<bool, String>((ref, videoId) {
-  return Stream.value(false);
+// ── Is Liked (checks via API) ───────────────────────────────────
+final isLikedProvider = StreamProvider.family<bool, String>((ref, videoId) async* {
+  final uid = ref.watch(currentUidProvider);
+  if (uid == null) { yield false; return; }
+  try {
+    yield await ApiService.isLiked(videoId, uid);
+  } catch (_) {
+    yield false;
+  }
 });
 
 // ── Liked Videos (from PostgreSQL API) ───────────────────────────
@@ -119,6 +125,18 @@ final likedVideosProvider = FutureProvider<List<VideoModel>>((ref) async {
 // ── Comments (from PostgreSQL API) ──────────────────────────────
 final commentsProvider = FutureProvider.family<List<CommentModel>, String>((ref, videoId) async {
   return ApiService.getComments(videoId);
+});
+
+// ── Trending Music (Deezer chart via API proxy) ─────────────────
+final trendingMusicProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return ApiService.getTrendingMusic(limit: 50);
+});
+
+// ── Notifications ────────────────────────────────────────────────
+final notificationsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final uid = ref.watch(currentUidProvider);
+  if (uid == null) return [];
+  return ApiService.getNotifications(uid);
 });
 
 // ── Stories (mock for now) ──────────────────────────────────────

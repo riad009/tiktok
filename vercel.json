@@ -1,5 +1,4 @@
 {
-    "name": "tiktok",
     "version": 2,
     "builds": [
         {
@@ -17,8 +16,16 @@
             "dest": "/server/index.js"
         },
         {
-            "src": "/(.*)",
+            "src": "/uploads/(.*)",
+            "dest": "/server/index.js"
+        },
+        {
+            "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|json|wasm|map))",
             "dest": "/build/web/$1"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/build/web/index.html"
         }
     ]
 }

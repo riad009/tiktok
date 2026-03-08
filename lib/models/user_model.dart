@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class UserModel {
   final String uid;
   final String username;
@@ -57,7 +55,7 @@ class UserModel {
       subscriberCount: map['subscriberCount'] ?? 0,
       totalTips: (map['totalTips'] as num?)?.toDouble() ?? 0.0,
       isBanned: map['isBanned'] ?? false,
-      createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: _parseDate(map['createdAt']),
     );
   }
 
@@ -78,7 +76,7 @@ class UserModel {
       'subscriberCount': subscriberCount,
       'totalTips': totalTips,
       'isBanned': isBanned,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
@@ -119,4 +117,10 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+}
+
+DateTime _parseDate(dynamic value) {
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+  return DateTime.now();
 }

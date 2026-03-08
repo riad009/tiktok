@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 /// Represents an auto-generated clip from a livestream highlight.
 class ClipModel {
   final String id;
@@ -57,7 +55,7 @@ class ClipModel {
       viewsCount: map['viewsCount'] ?? 0,
       postedToFeed: map['postedToFeed'] ?? false,
       sharedToStory: map['sharedToStory'] ?? false,
-      createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: _parseDate(map['createdAt']),
     );
   }
 
@@ -77,7 +75,7 @@ class ClipModel {
       'viewsCount': viewsCount,
       'postedToFeed': postedToFeed,
       'sharedToStory': sharedToStory,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
@@ -106,4 +104,10 @@ class ClipModel {
       createdAt: createdAt,
     );
   }
+}
+
+DateTime _parseDate(dynamic value) {
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+  return DateTime.now();
 }

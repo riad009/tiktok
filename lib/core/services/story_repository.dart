@@ -1,76 +1,50 @@
-import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:uuid/uuid.dart';
 import '../../models/story_model.dart';
-import '../constants/app_constants.dart';
+import '../data/mock_data.dart';
 
+/// Story repository — uses mock data.
+/// Can be connected to a PostgreSQL API when story endpoints are added.
 class StoryRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final _uuid = const Uuid();
-
-  CollectionReference<Map<String, dynamic>> get _storiesCol =>
-      _firestore.collection(AppConstants.storiesCollection);
 
   // ── Active Stories (non-expired) ───────────────────────────────
   Stream<List<StoryModel>> activeStoriesStream() {
-    return _storiesCol
-        .where('expiresAt', isGreaterThan: Timestamp.now())
-        .orderBy('expiresAt', descending: false)
-        .snapshots()
-        .map((snap) => snap.docs.map((d) => StoryModel.fromMap(d.data(), d.id)).toList());
+    final now = DateTime.now();
+    final active = MockData.stories.where((s) =>
+      s.expiresAt.isAfter(now)
+    ).toList();
+    return Stream.value(active.isEmpty ? MockData.stories : active);
   }
 
   // ── Upload Story ───────────────────────────────────────────────
   Future<StoryModel> uploadStory({
-    required File mediaFile,
+    required dynamic mediaFile,
     required String userId,
     required String username,
     String userPhotoUrl = '',
-    required String mediaType, // 'image' or 'video'
+    required String mediaType,
   }) async {
-    final storyId = _uuid.v4();
-    final ext = mediaType == 'video' ? 'mp4' : 'jpg';
-    final ref = _storage.ref().child('${AppConstants.storiesPath}/$storyId.$ext');
-    await ref.putFile(mediaFile);
-    final mediaUrl = await ref.getDownloadURL();
-
     final now = DateTime.now();
     final story = StoryModel(
-      id: storyId,
+      id: 'story-${now.millisecondsSinceEpoch}',
       userId: userId,
       username: username,
       userPhotoUrl: userPhotoUrl,
-      mediaUrl: mediaUrl,
+      mediaUrl: MockData.storyImg(now.millisecond),
       mediaType: mediaType,
       createdAt: now,
       expiresAt: now.add(const Duration(hours: 24)),
     );
-
-    await _storiesCol.doc(storyId).set(story.toMap());
+    MockData.stories.add(story);
     return story;
   }
 
   // ── Mark Viewed ────────────────────────────────────────────────
   Future<void> markViewed(String storyId, String userId) async {
-    await _storiesCol.doc(storyId).update({
-      'viewedBy': FieldValue.arrayUnion([userId]),
-    });
+    // No-op in mock mode
   }
 
   // ── Delete Story ───────────────────────────────────────────────
   Future<void> deleteStory(String storyId) async {
-    final doc = await _storiesCol.doc(storyId).get();
-    if (doc.exists) {
-      final data = doc.data()!;
-      final mediaType = data['mediaType'] ?? 'image';
-      final ext = mediaType == 'video' ? 'mp4' : 'jpg';
-      try {
-        await _storage.ref().child('${AppConstants.storiesPath}/$storyId.$ext').delete();
-      } catch (_) {}
-      await _storiesCol.doc(storyId).delete();
-    }
+    MockData.stories.removeWhere((s) => s.id == storyId);
   }
 
   // ── Stories grouped by user ────────────────────────────────────

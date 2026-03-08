@@ -2,6 +2,7 @@ require('dotenv').config(); // MUST be first — env vars needed by Mux client i
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
@@ -16,6 +17,17 @@ const httpServer = http.createServer(app);
 // ── CORS ─────────────────────────────────────────────────────────
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] }));
 app.use(express.json({ limit: '50mb' }));
+
+// ── Dynamic origin for absolute URLs (uploads etc.) ─────────────
+function getOrigin() {
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+    return `http://localhost:${process.env.PORT || 650}`;
+}
+
+// ── Serve uploaded files statically ──────────────────────────────
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
 
 // ── Redis (viewer counts & pub/sub) ──────────────────────────────
 const redis = process.env.REDIS_URL
@@ -116,6 +128,19 @@ app.get('/api/music/search', async (req, res) => {
     }
 });
 
+// GET /api/music/trending — Deezer chart tracks
+app.get('/api/music/trending', async (req, res) => {
+    try {
+        const limit = req.query.limit || 50;
+        const response = await fetch(`https://api.deezer.com/chart/0/tracks?limit=${limit}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        console.error('Trending music error:', err.message);
+        res.status(500).json({ error: 'Trending music failed', data: [] });
+    }
+});
+
 // ─── AUTH ────────────────────────────────────────────────────────
 
 // POST /api/auth/signup
@@ -202,6 +227,61 @@ app.get('/api/users/:id', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         res.json(mapUser(result.rows[0]));
     } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/users/:id/profile — update display_name, bio, photo_url
+app.put('/api/users/:id/profile', async (req, res) => {
+    try {
+        const { displayName, bio, photoUrl } = req.body;
+        const sets = [];
+        const vals = [];
+        let idx = 1;
+        if (displayName !== undefined) { sets.push(`display_name = $${idx++}`); vals.push(displayName); }
+        if (bio !== undefined) { sets.push(`bio = $${idx++}`); vals.push(bio); }
+        if (photoUrl !== undefined) { sets.push(`photo_url = $${idx++}`); vals.push(photoUrl); }
+        if (sets.length === 0) return res.status(400).json({ error: 'Nothing to update' });
+        vals.push(req.params.id);
+        const result = await pool.query(
+            `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx}
+             RETURNING id, username, display_name, email, photo_url, bio, role, is_verified,
+                       followers_count, following_count, posts_count, created_at`,
+            vals
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(mapUser(result.rows[0]));
+    } catch (err) {
+        console.error('Update profile error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/users/:id/photo — accept base64 image, save to /uploads
+app.put('/api/users/:id/photo', async (req, res) => {
+    try {
+        const { imageBase64 } = req.body;
+        if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+
+        // Strip data URI prefix if present
+        const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+        const ext = 'png';
+        const filename = `${req.params.id}_${Date.now()}.${ext}`;
+        const filePath = path.join(uploadsDir, filename);
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+
+        // Build public URL
+        const photoUrl = `/uploads/${filename}`;
+        const result = await pool.query(
+            `UPDATE users SET photo_url = $1 WHERE id = $2
+             RETURNING id, username, display_name, email, photo_url, bio, role, is_verified,
+                       followers_count, following_count, posts_count, created_at`,
+            [photoUrl, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(mapUser(result.rows[0]));
+    } catch (err) {
+        console.error('Upload photo error:', err.message);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -627,6 +707,107 @@ app.delete('/api/admin/posts/:id', async (req, res) => {
     }
 });
 
+// ─── NOTIFICATIONS ──────────────────────────────────────────────
+// GET /api/notifications/:userId — aggregates recent activity for this user
+app.get('/api/notifications/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const notifications = [];
+
+        // 1. Likes on user's posts (people who liked your content)
+        const likes = await pool.query(
+            `SELECT l.created_at, l.post_id, u.id AS actor_id, u.username AS actor_username,
+                    u.display_name AS actor_display_name, u.photo_url AS actor_photo_url,
+                    p.caption, p.image_url
+             FROM likes l
+             JOIN users u ON l.user_id = u.id
+             JOIN posts p ON l.post_id = p.id
+             WHERE p.user_id = $1 AND l.user_id != $1
+             ORDER BY l.created_at DESC LIMIT 30`,
+            [userId]
+        );
+        for (const row of likes.rows) {
+            let actorPhoto = row.actor_photo_url || '';
+            if (actorPhoto.startsWith('/uploads/')) actorPhoto = `${getOrigin()}${actorPhoto}`;
+            notifications.push({
+                id: `like_${row.post_id}_${row.actor_id}`,
+                type: 'like',
+                actorId: row.actor_id,
+                actorUsername: row.actor_username,
+                actorDisplayName: row.actor_display_name,
+                actorPhotoUrl: actorPhoto,
+                postId: row.post_id,
+                postCaption: row.caption || '',
+                postImageUrl: row.image_url || '',
+                createdAt: row.created_at,
+            });
+        }
+
+        // 2. Comments on user's posts
+        const comments = await pool.query(
+            `SELECT c.created_at, c.post_id, c.text, u.id AS actor_id, u.username AS actor_username,
+                    u.display_name AS actor_display_name, u.photo_url AS actor_photo_url,
+                    p.caption, p.image_url
+             FROM comments c
+             JOIN users u ON c.user_id = u.id
+             JOIN posts p ON c.post_id = p.id
+             WHERE p.user_id = $1 AND c.user_id != $1
+             ORDER BY c.created_at DESC LIMIT 30`,
+            [userId]
+        );
+        for (const row of comments.rows) {
+            let actorPhoto = row.actor_photo_url || '';
+            if (actorPhoto.startsWith('/uploads/')) actorPhoto = `http://localhost:${PORT}${actorPhoto}`;
+            notifications.push({
+                id: `comment_${row.post_id}_${row.actor_id}_${row.created_at}`,
+                type: 'comment',
+                actorId: row.actor_id,
+                actorUsername: row.actor_username,
+                actorDisplayName: row.actor_display_name,
+                actorPhotoUrl: actorPhoto,
+                postId: row.post_id,
+                postCaption: row.caption || '',
+                postImageUrl: row.image_url || '',
+                commentText: row.text || '',
+                createdAt: row.created_at,
+            });
+        }
+
+        // 3. New messages (last message from each conversation)
+        const messages = await pool.query(
+            `SELECT m.created_at, m.text, u.id AS actor_id, u.username AS actor_username,
+                    u.display_name AS actor_display_name, u.photo_url AS actor_photo_url
+             FROM messages m
+             JOIN conversation_participants cp ON m.conversation_id = cp.conversation_id
+             JOIN users u ON m.sender_id = u.id
+             WHERE cp.user_id = $1 AND m.sender_id != $1
+             ORDER BY m.created_at DESC LIMIT 15`,
+            [userId]
+        );
+        for (const row of messages.rows) {
+            let actorPhoto = row.actor_photo_url || '';
+            if (actorPhoto.startsWith('/uploads/')) actorPhoto = `http://localhost:${PORT}${actorPhoto}`;
+            notifications.push({
+                id: `msg_${row.actor_id}_${row.created_at}`,
+                type: 'message',
+                actorId: row.actor_id,
+                actorUsername: row.actor_username,
+                actorDisplayName: row.actor_display_name,
+                actorPhotoUrl: actorPhoto,
+                messageText: row.text || '',
+                createdAt: row.created_at,
+            });
+        }
+
+        // Sort all by time desc
+        notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        res.json(notifications.slice(0, 50));
+    } catch (err) {
+        console.error('Notifications error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // GET /api/admin/reports
 app.get('/api/admin/reports', async (req, res) => {
     try {
@@ -696,12 +877,17 @@ function mapReport(row) {
 }
 
 function mapUser(row) {
+    // Build absolute photo URL for relative /uploads/ paths
+    let photoUrl = row.photo_url || '';
+    if (photoUrl.startsWith('/uploads/')) {
+        photoUrl = `${getOrigin()}${photoUrl}`;
+    }
     return {
         uid: row.id,
         username: row.username,
         displayName: row.display_name,
         email: row.email,
-        photoUrl: row.photo_url || '',
+        photoUrl,
         bio: row.bio || '',
         role: row.role || 'user',
         isVerified: row.is_verified || false,
@@ -963,12 +1149,17 @@ app.get(/^(?!\/api).*/, (req, res) => {
     res.sendFile(path.join(webBuildPath, 'index.html'));
 });
 
-autoMigrate().then(() => {
-    httpServer.listen(PORT, () => {
-        console.log(`🚀 Artistcase API  →  http://localhost:${PORT}`);
-        console.log(`🔌 Socket.io ready →  ws://localhost:${PORT}`);
+// ── Vercel serverless: export app; Local dev: listen on PORT ─────
+if (process.env.VERCEL) {
+    // Run migration once on cold start, then export the Express app
+    autoMigrate().catch(e => console.warn('Migration note:', e.message));
+    module.exports = app;
+} else {
+    autoMigrate().then(() => {
+        httpServer.listen(PORT, () => {
+            console.log(`🚀 Artistcase API  →  http://localhost:${PORT}`);
+            console.log(`🔌 Socket.io ready →  ws://localhost:${PORT}`);
+        });
     });
-});
-
-// Export io for use in routes if needed
-module.exports.io = io;
+    module.exports.io = io;
+}
